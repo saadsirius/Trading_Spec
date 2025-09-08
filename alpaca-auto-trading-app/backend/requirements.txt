@@ -1,0 +1,9 @@
+FastAPI
+Flask
+alpaca-trade-api
+openai
+pandas
+sqlalchemy
+uvicorn
+pytest
+httpx

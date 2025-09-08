@@ -1,0 +1,17 @@
+FROM node:14
+
+WORKDIR /app
+
+COPY ./frontend/web_app/package.json ./frontend/web_app/package-lock.json ./
+
+RUN npm install
+
+COPY ./frontend/web_app/src ./src
+
+COPY ./frontend/web_app/public ./public
+
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
