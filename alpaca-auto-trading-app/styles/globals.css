@@ -1,0 +1,506 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Background gradient + subtle noise overlay */
+:root { color-scheme: dark; }
+body {
+  @apply bg-ink text-white;
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(34,211,238,0.35), transparent 60%),
+    radial-gradient(900px 500px at 90% -20%, rgba(110,86,207,0.35), transparent 60%),
+    radial-gradient(700px 400px at 50% 120%, rgba(244,114,182,0.25), transparent 60%);
+  background-color: #0B1020;
+  position: relative;
+}
+body::after {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='2' type='fractalNoise'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  z-index: 0;
+}
+
+/* Liquid glass button base (for pseudo glossy rims) */
+.glass {
+  @apply bg-white/10 border border-white/20 backdrop-blur-xl shadow-glass rounded-2xl;
+}
+.btn-glass {
+  @apply glass relative px-5 py-3 font-medium transition duration-200 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-secondary/60;
+}
+.btn-glass::before {
+  /* inner glossy rim */
+  content:""; position:absolute; inset:0; border-radius:inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.06));
+  mask: linear-gradient(#000, transparent 60%);
+  pointer-events:none;
+}
+.btn-glass::after {
+  /* liquid highlight orb */
+  content:""; position:absolute; width:120px; height:120px; left:50%; top:0;
+  transform: translate(-50%, -70%); border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255,255,255,0.35), transparent 65%);
+  transition: transform .4s ease, opacity .3s ease; opacity:.6;
+}
+.btn-glass:hover::after { transform: translate(-50%, -50%) scale(1.05); opacity:.9; }
+@media (prefers-reduced-motion: reduce) {
+  .btn-glass, .btn-glass::after { transition: none !important; }
+}
+
+/* Wind Flow Animation */
+@keyframes windFlow {
+  0% {
+    transform: translateX(-100%) translateY(-50%) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(100vw) translateY(-50%) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes windFlowReverse {
+  0% {
+    transform: translateX(100%) translateY(-50%) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(-100vw) translateY(-50%) rotate(-360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes windFlowVertical {
+  0% {
+    transform: translateY(-100%) translateX(-50%) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.4;
+  }
+  90% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(100vh) translateX(-50%) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+.wind-flow-container {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #1e293b 75%, #0f172a 100%);
+}
+
+.wind-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.8) 0%, rgba(37, 99, 235, 0.4) 50%, rgba(29, 78, 216, 0.1) 100%);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(37, 99, 235, 0.3);
+  animation-duration: 8s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.wind-particle:nth-child(1) {
+  width: 60px;
+  height: 60px;
+  top: 20%;
+  animation-name: windFlow;
+  animation-delay: 0s;
+}
+
+.wind-particle:nth-child(2) {
+  width: 40px;
+  height: 40px;
+  top: 40%;
+  animation-name: windFlowReverse;
+  animation-delay: 2s;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.7) 0%, rgba(59, 130, 246, 0.3) 50%, rgba(37, 99, 235, 0.1) 100%);
+  box-shadow: 0 0 15px rgba(96, 165, 250, 0.4), 0 0 30px rgba(59, 130, 246, 0.2);
+}
+
+.wind-particle:nth-child(3) {
+  width: 80px;
+  height: 80px;
+  top: 60%;
+  animation-name: windFlow;
+  animation-delay: 4s;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.9) 0%, rgba(29, 78, 216, 0.5) 50%, rgba(30, 64, 175, 0.2) 100%);
+  box-shadow: 0 0 25px rgba(37, 99, 235, 0.6), 0 0 50px rgba(29, 78, 216, 0.4);
+}
+
+.wind-particle:nth-child(4) {
+  width: 35px;
+  height: 35px;
+  top: 80%;
+  animation-name: windFlowReverse;
+  animation-delay: 6s;
+  background: radial-gradient(circle, rgba(147, 197, 253, 0.6) 0%, rgba(96, 165, 250, 0.3) 50%, rgba(59, 130, 246, 0.1) 100%);
+  box-shadow: 0 0 12px rgba(147, 197, 253, 0.5), 0 0 24px rgba(96, 165, 250, 0.3);
+}
+
+.wind-particle:nth-child(5) {
+  width: 50px;
+  height: 50px;
+  left: 30%;
+  animation-name: windFlowVertical;
+  animation-delay: 1s;
+  animation-duration: 12s;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.7) 0%, rgba(37, 99, 235, 0.4) 50%, rgba(29, 78, 216, 0.2) 100%);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.5), 0 0 36px rgba(37, 99, 235, 0.3);
+}
+
+.wind-particle:nth-child(6) {
+  width: 45px;
+  height: 45px;
+  left: 70%;
+  animation-name: windFlowVertical;
+  animation-delay: 7s;
+  animation-duration: 10s;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.8) 0%, rgba(59, 130, 246, 0.4) 50%, rgba(37, 99, 235, 0.2) 100%);
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.6), 0 0 32px rgba(59, 130, 246, 0.4);
+}
+
+/* Floating particles */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-20px) translateX(10px) rotate(90deg);
+  }
+  50% {
+    transform: translateY(-10px) translateX(-5px) rotate(180deg);
+  }
+  75% {
+    transform: translateY(-30px) translateX(15px) rotate(270deg);
+  }
+}
+
+.floating-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(147, 197, 253, 0.4) 0%, rgba(96, 165, 250, 0.2) 50%, transparent 100%);
+  box-shadow: 0 0 10px rgba(147, 197, 253, 0.3);
+  animation: float 6s ease-in-out infinite;
+}
+
+.floating-particle:nth-child(7) {
+  width: 20px;
+  height: 20px;
+  top: 15%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.floating-particle:nth-child(8) {
+  width: 25px;
+  height: 25px;
+  top: 35%;
+  left: 80%;
+  animation-delay: 2s;
+}
+
+.floating-particle:nth-child(9) {
+  width: 18px;
+  height: 18px;
+  top: 65%;
+  left: 20%;
+  animation-delay: 4s;
+}
+
+.floating-particle:nth-child(10) {
+  width: 22px;
+  height: 22px;
+  top: 85%;
+  left: 60%;
+  animation-delay: 6s;
+}
+
+/* Wind streaks */
+@keyframes windStreak {
+  0% {
+    transform: translateX(-100%) skewX(-15deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(100vw) skewX(-15deg);
+    opacity: 0;
+  }
+}
+
+.wind-streak {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(96, 165, 250, 0.8) 50%, transparent 100%);
+  border-radius: 1px;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.6);
+  animation: windStreak 4s linear infinite;
+}
+
+.wind-streak:nth-child(11) {
+  width: 200px;
+  top: 25%;
+  animation-delay: 0s;
+}
+
+.wind-streak:nth-child(12) {
+  width: 150px;
+  top: 50%;
+  animation-delay: 1.5s;
+}
+
+.wind-streak:nth-child(13) {
+  width: 180px;
+  top: 75%;
+  animation-delay: 3s;
+}
+
+/* Global styles for the Alpaca Auto-Trading App */
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    height: 100vh;
+    width: 100vw;
+    overflow: auto;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f8fafc;
+  }
+
+  #__next {
+    height: 100%;
+  }
+}
+
+@layer components {
+  /* Custom component styles */
+  .trading-card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200;
+  }
+
+  .trading-button {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  .trading-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200;
+  }
+
+  .trading-select {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200;
+  }
+
+  /* Chart container styles */
+  .chart-container {
+    @apply w-full h-full min-h-[400px] bg-white rounded-lg border border-gray-200;
+  }
+
+  /* Notification styles */
+  .notification-container {
+    @apply fixed top-4 right-4 z-50 space-y-2;
+  }
+
+  .notification {
+    @apply bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-sm;
+    animation: slideInRight 0.3s ease-out;
+  }
+
+  .notification.notification-exit {
+    animation: slideOutRight 0.3s ease-in;
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideOutRight {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  /* Loading skeleton */
+  .skeleton {
+    @apply bg-gray-200 animate-pulse rounded;
+  }
+
+  /* Status indicators */
+  .status-indicator {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-success {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .status-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .status-error {
+    @apply bg-red-100 text-red-800;
+  }
+
+  .status-info {
+    @apply bg-blue-100 text-blue-800;
+  }
+
+  /* Price indicators */
+  .price-positive {
+    @apply text-green-600;
+  }
+
+  .price-negative {
+    @apply text-red-600;
+  }
+
+  .price-neutral {
+    @apply text-gray-600;
+  }
+}
+
+@layer utilities {
+  /* Custom utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Responsive grid utilities */
+  .grid-responsive {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+  }
+
+  .grid-responsive-2 {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-6;
+  }
+
+  .grid-responsive-3 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+  }
+
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-slide-down {
+    animation: slideDown 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      transform: translateY(-20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .dark-mode {
+    @apply bg-gray-900 text-white;
+  }
+
+  .dark-mode .trading-card {
+    @apply bg-gray-800 border-gray-700;
+  }
+
+  .dark-mode .trading-input,
+  .dark-mode .trading-select {
+    @apply bg-gray-800 border-gray-600 text-white;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}
