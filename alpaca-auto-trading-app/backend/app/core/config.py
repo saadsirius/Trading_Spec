@@ -22,28 +22,31 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, description="Server port")
     
     # Alpaca API Configuration
-    alpaca_api_key_id: str = Field(..., description="Alpaca API Key ID")
-    alpaca_secret_key: str = Field(..., description="Alpaca Secret Key")
+    alpaca_api_key_id: str = Field(..., alias="APCA_API_KEY_ID", description="Alpaca API Key ID")
+    alpaca_secret_key: str = Field(..., alias="APCA_API_SECRET_KEY", description="Alpaca Secret Key")
     alpaca_paper_base_url: str = Field(
         default="https://paper-api.alpaca.markets",
+        alias="APCA_PAPER_BASE_URL",
         description="Alpaca Paper Trading Base URL"
     )
     alpaca_live_base_url: str = Field(
         default="https://api.alpaca.markets",
+        alias="APCA_LIVE_BASE_URL",
         description="Alpaca Live Trading Base URL"
     )
     
     # OpenAI Configuration
-    openai_api_key: str = Field(..., description="OpenAI API Key")
+    openai_api_key: str = Field(..., alias="OPENAI_API_KEY", description="OpenAI API Key")
     
     # Database Configuration
     database_url: str = Field(
         default="sqlite+aiosqlite:///./app.db",
+        alias="DATABASE_URL",
         description="Database connection URL"
     )
     
     # Security
-    secret_key: str = Field(..., description="Secret key for JWT tokens")
+    secret_key: str = Field(..., alias="SECRET_KEY", description="Secret key for JWT tokens")
     access_token_expire_minutes: int = Field(
         default=30,
         description="Access token expiration time in minutes"

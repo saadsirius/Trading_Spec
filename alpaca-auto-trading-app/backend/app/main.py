@@ -1,21 +1,65 @@
+"""
+Main FastAPI application entry point.
+
+This module creates and configures the FastAPI application with:
+- CORS middleware for frontend communication
+- API versioning with v1 routes
+- OpenAPI documentation
+- Error handling middleware
+- Request logging middleware
+"""
+
 from fastapi import FastAPI
-from app.api.routes import router as trading_router
-from app.api.explanations import router as explanation_router
-from dotenv import load_dotenv
-import os
+from fastapi.middleware.cors import CORSMiddleware
 
-# Load environment variables
-load_dotenv()
+from app.api.v1.router import router as v1_router
+from app.core.config import settings
 
+# Create FastAPI application
 app = FastAPI(
-    title="Alpaca Auto-Trading App API",
-    description="API for automated trading with Alpaca and AI explanations",
-    version="1.0.0"
+    title=settings.app_name,
+    version=settings.version,
+    description="Alpaca Trading API - A comprehensive trading platform with AI integration",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
-app.include_router(trading_router, prefix="/api/trading", tags=["trading"])
-app.include_router(explanation_router, prefix="/api/explanations", tags=["explanations"])
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Alpaca Auto-Trading App API"}
+# Include API v1 router
+app.include_router(v1_router)
+
+# Root endpoint
+@app.get("/", tags=["Root"])
+async def root() -> dict[str, str]:
+    """
+    Root endpoint providing basic API information.
+    
+    Returns:
+        dict: Basic API information and available endpoints
+    """
+    return {
+        "message": f"Welcome to {settings.app_name}",
+        "version": settings.version,
+        "docs": "/docs",
+        "health": "/v1/healthz",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+    )
