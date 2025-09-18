@@ -163,6 +163,36 @@ body {
   transform: scale(.98); 
 }
 
+/* Cards propres */
+.ds-card { 
+  background: var(--ds-card, #0b0c0f); 
+  border: 1px solid var(--ds-border, #1f2937); 
+  border-radius: 12px; 
+  box-shadow: var(--ds-shadow, 0 4px 16px rgba(0,0,0,.2)); 
+}
+
+.badge { 
+  padding: .25rem .5rem; 
+  border: 1px solid var(--ds-border, #1f2937); 
+  border-radius: 999px; 
+  font-size: .75rem; 
+}
+
+.kpi { 
+  font-variant-numeric: tabular-nums; 
+}
+
+.grid-auto { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); 
+  gap: 12px; 
+}
+
+.spark-mini { 
+  inline-size: 140px; 
+  block-size: 32px; 
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
