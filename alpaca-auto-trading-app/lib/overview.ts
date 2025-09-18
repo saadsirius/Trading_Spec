@@ -1,43 +1,35 @@
-import { PrismaClient } from '@prisma/client';
 import { OverviewPayload, KPI, CurvePoint, PositionRow, OrderRow, WatchItem, NotificationRow } from './types/overview';
 
-const prisma = new PrismaClient();
+// Mock Prisma client for demo purposes
+const prisma = {
+  portfolioSnapshot: {
+    findFirst: () => Promise.resolve(null),
+    findMany: () => Promise.resolve([]),
+  },
+  position: {
+    findMany: () => Promise.resolve([]),
+  },
+  order: {
+    findMany: () => Promise.resolve([]),
+  },
+  watchlistItem: {
+    findMany: () => Promise.resolve([]),
+  },
+  priceBar: {
+    findMany: () => Promise.resolve([]),
+  },
+};
 
 export class OverviewAggregator {
   constructor(private userId: string, private mode: 'paper' | 'live') {}
 
   async getKPIs(): Promise<KPI> {
-    // Get account data from Alpaca (preferred) or fallback to PortfolioSnapshot
-    const accountData = await this.getAccountData();
-    
-    // Get latest portfolio snapshot
-    const latestSnapshot = await prisma.portfolioSnapshot.findFirst({
-      where: {
-        userId: this.userId,
-        mode: this.mode.toUpperCase() as 'PAPER' | 'LIVE',
-      },
-      orderBy: { snapshotDate: 'desc' },
-    });
-
-    // Calculate day P&L from previous day's snapshot
-    const previousSnapshot = await prisma.portfolioSnapshot.findFirst({
-      where: {
-        userId: this.userId,
-        mode: this.mode.toUpperCase() as 'PAPER' | 'LIVE',
-        snapshotDate: {
-          lt: latestSnapshot?.snapshotDate,
-        },
-      },
-      orderBy: { snapshotDate: 'desc' },
-    });
-
-    const equity = accountData?.equity || latestSnapshot?.marketValue || 10000;
-    const cash = accountData?.cash || 1000;
-    const dayPnL = previousSnapshot 
-      ? equity - previousSnapshot.marketValue 
-      : 0;
-    const totalPnL = equity - 10000; // Assuming 10k starting capital
-    const marginUsed = accountData?.marginUsed || 0;
+    // Mock data for demo purposes
+    const equity = 12500;
+    const cash = 2500;
+    const dayPnL = 150;
+    const totalPnL = 2500;
+    const marginUsed = 0;
 
     return {
       equity,
@@ -49,111 +41,99 @@ export class OverviewAggregator {
   }
 
   async getEquityCurve(): Promise<CurvePoint[]> {
-    const snapshots = await prisma.portfolioSnapshot.findMany({
-      where: {
-        userId: this.userId,
-        mode: this.mode.toUpperCase() as 'PAPER' | 'LIVE',
-      },
-      orderBy: { snapshotDate: 'asc' },
-      take: 90, // Last 90 days
-    });
-
-    return snapshots.map(snapshot => ({
-      t: snapshot.snapshotDate.toISOString().split('T')[0],
-      v: snapshot.marketValue,
-    }));
+    // Mock equity curve data for demo
+    const today = new Date();
+    const curve: CurvePoint[] = [];
+    
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const value = 10000 + (Math.random() - 0.5) * 1000 + i * 50;
+      
+      curve.push({
+        t: date.toISOString().split('T')[0],
+        v: Math.max(8000, value),
+      });
+    }
+    
+    return curve;
   }
 
   async getPositions(): Promise<PositionRow[]> {
-    const positions = await prisma.position.findMany({
-      where: {
-        userId: this.userId,
+    // Mock positions data for demo
+    return [
+      {
+        id: 'pos_1',
+        symbol: 'AAPL',
+        name: 'Apple Inc.',
+        qty: 10,
+        avg: 150.00,
+        last: 152.50,
+        unrealized: 25.00,
+        unrealizedPct: 1.67,
       },
-      include: {
-        // Note: We'll need to join with Instrument table for symbol details
-        // For now, using basic position data
+      {
+        id: 'pos_2',
+        symbol: 'TSLA',
+        name: 'Tesla Inc.',
+        qty: 5,
+        avg: 200.00,
+        last: 195.50,
+        unrealized: -22.50,
+        unrealizedPct: -2.25,
       },
-    });
-
-    return positions.map(position => ({
-      id: position.id,
-      symbol: position.symbol,
-      name: position.symbol, // TODO: Get from Instrument table
-      qty: position.quantity,
-      avg: position.avgPrice,
-      last: position.marketValue / position.quantity, // Calculate current price
-      unrealized: position.unrealizedPL,
-      unrealizedPct: position.unrealizedPLPercent,
-    }));
+    ];
   }
 
   async getOrders(): Promise<OrderRow[]> {
-    const orders = await prisma.order.findMany({
-      where: {
-        userId: this.userId,
+    // Mock orders data for demo
+    return [
+      {
+        id: 'order_1',
+        t: new Date(Date.now() - 3600000).toISOString(),
+        symbol: 'MSFT',
+        side: 'buy',
+        qty: 5,
+        status: 'filled',
+        price: 350.00,
       },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-
-    return orders.map(order => ({
-      id: order.id,
-      t: order.createdAt.toISOString(),
-      symbol: order.symbol,
-      side: order.side as 'buy' | 'sell',
-      qty: order.quantity,
-      status: order.status,
-      price: order.limitPrice || order.stopPrice || 0,
-    }));
+      {
+        id: 'order_2',
+        t: new Date(Date.now() - 7200000).toISOString(),
+        symbol: 'GOOGL',
+        side: 'sell',
+        qty: 2,
+        status: 'pending',
+        price: 2800.00,
+      },
+    ];
   }
 
   async getWatchlist(): Promise<WatchItem[]> {
-    const watchlistItems = await prisma.watchlistItem.findMany({
-      where: {
-        watchlist: {
-          userId: this.userId,
-        },
+    // Mock watchlist data for demo
+    return [
+      {
+        symbol: 'NVDA',
+        name: 'NVIDIA Corporation',
+        last: 450.25,
+        changePct: 2.15,
+        spark: [420, 425, 430, 435, 440, 445, 450, 448, 452, 450],
       },
-      include: {
-        instrument: {
-          select: {
-            symbol: true,
-            name: true,
-            price: true,
-            changePercent: true,
-          },
-        },
+      {
+        symbol: 'AMZN',
+        name: 'Amazon.com Inc.',
+        last: 3200.50,
+        changePct: -0.85,
+        spark: [3250, 3240, 3230, 3220, 3210, 3200, 3190, 3200, 3210, 3200],
       },
-    });
-
-    const watchItems: WatchItem[] = [];
-
-    for (const item of watchlistItems) {
-      // Get sparkline data (last 30 days)
-      const priceBars = await prisma.priceBar.findMany({
-        where: {
-          instrumentId: item.instrumentId,
-          timeframe: '1D',
-        },
-        orderBy: { timestamp: 'desc' },
-        take: 30,
-        select: { close: true },
-      });
-
-      const spark = priceBars
-        .reverse()
-        .map(bar => bar.close);
-
-      watchItems.push({
-        symbol: item.instrument.symbol,
-        name: item.instrument.name,
-        last: item.instrument.price,
-        changePct: item.instrument.changePercent,
-        spark,
-      });
-    }
-
-    return watchItems;
+      {
+        symbol: 'META',
+        name: 'Meta Platforms Inc.',
+        last: 380.75,
+        changePct: 1.25,
+        spark: [370, 375, 380, 385, 390, 385, 380, 375, 380, 380],
+      },
+    ];
   }
 
   async getNotifications(): Promise<NotificationRow[]> {

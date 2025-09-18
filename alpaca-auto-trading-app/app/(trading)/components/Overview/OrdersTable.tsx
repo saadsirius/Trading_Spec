@@ -3,13 +3,35 @@
 import { motion } from 'framer-motion';
 import { OrderRow } from '@/lib/types/overview';
 import { formatCurrency } from '@/lib/overview';
+import { useClickHandlers } from '@/lib/hooks/useClickHandlers';
 
 interface OrdersTableProps {
   orders: OrderRow[];
   mode: 'paper' | 'live';
+  onOrderClick?: (order: OrderRow) => void;
 }
 
-export function OrdersTable({ orders, mode }: OrdersTableProps) {
+export function OrdersTable({ orders, mode, onOrderClick }: OrdersTableProps) {
+  const { handleNavigationClick } = useClickHandlers();
+
+  const handleOrderRowClick = async (order: OrderRow) => {
+    if (onOrderClick) {
+      onOrderClick(order);
+    } else {
+      // Default behavior: navigate to order details
+      await handleNavigationClick({
+        route: '/orders',
+        params: { id: order.id }
+      });
+    }
+  };
+
+  const handleViewAllClick = async () => {
+    await handleNavigationClick({
+      route: '/orders',
+      params: { mode }
+    });
+  };
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'filled':
@@ -54,7 +76,10 @@ export function OrdersTable({ orders, mode }: OrdersTableProps) {
         <h3 className="text-lg font-semibold text-white">Recent Orders</h3>
         <div className="flex items-center space-x-4">
           <span className="text-sm text-white/60">Last 10</span>
-          <button className="text-sm text-secondary hover:text-secondary/80 transition-colors">
+          <button 
+            onClick={handleViewAllClick}
+            className="text-sm text-secondary hover:text-secondary/80 transition-colors"
+          >
             View all →
           </button>
         </div>
@@ -79,7 +104,8 @@ export function OrdersTable({ orders, mode }: OrdersTableProps) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                onClick={() => handleOrderRowClick(order)}
+                className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
               >
                 <td className="py-3">
                   <div className="text-sm text-white">

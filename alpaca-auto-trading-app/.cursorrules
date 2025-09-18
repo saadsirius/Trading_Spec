@@ -1,0 +1,307 @@
+# === Warrior Bootstrap (Trading 212-like, avec backtesting/screener/watchlist & garde-fous) ===
+
+## 1) Objectif du projet
+
+Fournir une plateforme de trading propriétaire (frontend + backend) qui offre toutes les fonctionnalités essentielles de Trading212 / TradingView : charting professionnel, backtesting robuste, screener riche, profil d'actif (par id) avec analyse IA en temps réel, watchlists, news & calendrier économique, et scoring multi-dimensionnel (pentagone). Tout doit être typer (TypeScript) et prêt à être copié dans Cursor.
+
+### Principes non négociables
+- Conception modulaire et testable
+- Types stricts (TypeScript strict: true)
+- Observabilité (logs structurés, traces, métriques)
+- Sécurité (chiffrement des clés, least privilege)
+- Traçabilité des décisions IA (provenance + score de confiance)
+
+## 2) Vue d'ensemble fonctionnelle — Features à ajouter/affiner
+- Charting (ticks, intraday, multi-plot, indicators, drawing tools, save templates)
+- Backtesting (historiques, monte-carlo, walk-forward, slippage, commissions)
+- Screener (multi-filters, custom scripts, indicators, alerts)
+- Recherche & profil par ID (fiches complètes, ratio, news, analyst notes, IA)
+- Watchlist en temps réel (price + sentiment + news feed + alerts)
+- Sentiment Analysis (news stream, social, calendar events)
+- Calendar économique (filtres par pays / importance / impact)
+- Pentagon scoring (5 axes, radar visualization, historical trend)
+- Alert Engine (user rules + IA rules + webhook actions)
+- Simulation / Paper trading + Live trading adapters (Alpaca, Polygon)
+- Role-based UI: user, analyst, admin, dev
+
+## 3) Architecture technique (haut niveau)
+
+**Front-end**: Next.js (app router), React + TypeScript, Tailwind, Zustand/React Query for state + WebSocket handling
+
+**Charting**: TradingView Charting Library (commercial) ou lightweight-charts pour la base + custom wrapper
+
+**Back-end**: Node.js (NestJS/Express) en TypeScript
+
+**Realtime**: WebSocket gateway (ws / uWebSockets) + Redis Pub/Sub
+
+**Data pipeline**: Ingestion (WebSocket/API) → Kafka/Redis Streams → Worker cluster (Python/Node) → TimescaleDB / ClickHouse
+
+**ML / NLP**: Python microservices (FastAPI) pour modèles NLP, inference (FinBERT, transformers), vector DB (Milvus / Pinecone)
+
+**DBs**:
+- Time-series: TimescaleDB (Postgres) ou ClickHouse
+- OLTP: PostgreSQL
+- Cache: Redis
+- Vector embeddings: Milvus/Pinecone
+
+**Storage**: S3 for snapshots and tick archives
+
+**Observability**: OpenTelemetry + Prometheus + Grafana + Sentry
+
+**Deployment**: Kubernetes (EKS/GKE) + CI (GitHub Actions)
+
+## 4) Schémas d'API et contrats (à copier)
+
+### 4.1 Format Watchlist (POST /api/watchlists)
+```json
+{
+  "id": "wl_123",
+  "name": "Tech Morning",
+  "ownerId": "user_456",
+  "items": [
+    {"symbol":"AAPL","source":"NASDAQ","addedAt":"2025-09-01T08:00:00Z"},
+    {"symbol":"TSLA","source":"NASDAQ","addedAt":"2025-09-01T08:01:00Z"}
+  ],
+  "realtime": true,
+  "sentimentEnabled": true
+}
+```
+
+### 4.2 Format Backtest request (POST /api/backtests)
+```json
+{
+  "id":"bt_001",
+  "userId":"user_456",
+  "symbol":"AAPL",
+  "start":"2020-01-01T00:00:00Z",
+  "end":"2024-12-31T23:59:59Z",
+  "initialCapital":100000,
+  "commission":0.001,
+  "slippage":0.001,
+  "strategy":{
+    "type":"script",
+    "language":"pine-like",
+    "script":"ema(20) cross ema(50)"
+  },
+  "metrics":["sharpe","max_drawdown","annual_return"]
+}
+```
+
+### 4.3 Format Screener query
+```json
+{
+  "queryId":"sc_001",
+  "filters":[
+    {"field":"marketCap","op":">=","value":1000000000},
+    {"field":"rsi","op":"<","value":30}
+  ],
+  "sort":[{"field":"volume","dir":"desc"}],
+  "limit":200
+}
+```
+
+### 4.4 Format Alert rule
+```json
+{
+  "id":"alert_001",
+  "ownerId":"user_123",
+  "type":"price|strategy|sentiment|calendar",
+  "payload":{ /* dépend du type */ },
+  "actions": [{"type":"webhook","url":"https://..."}],
+  "enabled":true,
+  "createdAt":"2025-09-01T09:00:00Z"
+}
+```
+
+## 5) Charting — exigences détaillées
+
+### Objectif
+Offrir un chart autant pro que TradingView : multi-timeframe, indicators, drawing tools, snapshots, fast pan/zoom, multi-series, OHLC + Ticks, study templates.
+
+### Recommandations d'intégration
+- Option A (si budget): TradingView Charting Library (pro) — meilleur out-of-the-box.
+- Option B (open): lightweight-charts (TradingView OSS) + react-stockcharts pour features avancées.
+
+### Fonctionnalités minimales à implémenter
+- OHLC + Volume + Ticks
+- Indicators: SMA, EMA, MACD, RSI, Bollinger
+- Drawing tools: trendline, fib retracement, text, vertical/horizontal lines
+- Multi-pane layout (indicators in separate panes)
+- Template saving/loading per user
+- Hotkeys & keyboard accessibility
+- High performance for 10k+ ticks
+- Export (PNG/SVG/CSV)
+
+### API pour charting (web socket + REST)
+- REST: /api/ohlc?symbol=AAPL&period=1m&start=...&end=...
+- WS: wss://realtime.example.com/ticks?symbols=AAPL,TSLA — events: tick, snapshot, ohlc_update
+
+### Data contracts (example tick event)
+```json
+{ "type":"tick", "symbol":"AAPL", "ts":"2025-09-18T08:04:00Z", "price":171.23, "size":100 }
+```
+
+## 6) Backtesting — design & API
+
+### Principes
+- Reproductibilité: chaque backtest doit stocker seeds, version du moteur, dataset hash
+- Réalisme: slippage, commission, latency emulation
+- Performance: workers en parallel (partition par symbol/date)
+
+### Moteurs recommandés
+- Python: vectorbt (rapide, numpy-driven), backtrader (mature), zipline (legacy)
+- JS: backtesting.js (simple), mais heavy compute => Python conseillé
+
+### Inputs/Outputs
+- Input: stratégie (script ou config), univers, cash, fees
+- Output: trades log, equity curve (timestamps), metrics, monte-carlo results, trade-by-trade P&L
+
+## 7) Screener & Research
+
+### Capacités
+- Requête multi-filtres (financials, technicals, fundamentals, sentiment)
+- Scripts custom (mini-language type PineScript-lite)
+- Persisted screens + scheduling (run every X minutes)
+- Export CSV & direct add-to-watchlist
+
+### Data sources recommandées
+- Finnhub, Polygon, IEX Cloud, Alpha Vantage (fundamentals), Morningstar (si licence)
+
+## 8) Watchlist & Sentiment
+
+### Watchlist
+- Real-time price feed, last N news, IA summary and confidence, indicators snapshot
+- Actions: add/remove, pin, set alerts, annotate
+
+### Sentiment pipeline
+1. Sources: NewsAPI, Twitter (X) stream (filtered), Reddit subreddits (optional), Stocktwits
+2. Preprocess: language detection, dedup, timestamp normalization
+3. NLP models: FinBERT or DistilBERT fine-tuned + VADER for lexicon baseline
+4. Signals: polarity [-1..1], subject (earnings, guidance, macro), intensity, confidence
+5. Store: time-series sentiment per symbol (per minute/hour/day)
+
+### Calendar
+- Ingest economic calendars (TradingEconomics, Investing.com API) → map to symbol/country → show importance (low/med/high)
+- Allow linking calendar events to watchlist symbols
+
+## 9) Pentagon scoring (Investing Warriors style)
+
+### Dimensions (exemple)
+1. Momentum
+2. Volatility
+3. Fundamentals
+4. Sentiment
+5. Risk (liquidity, drawdown)
+
+### Calcul:
+- Normaliser chaque métrique en 0..100
+- Score pentagone = vecteur [d1..d5]
+- Stocker historique pour affichage radar et évolution
+
+### Endpoint prototype
+GET /api/scores/pentagon?symbol=AAPL&period=30d
+
+## 10) Alertes IA — charte et métadonnées
+
+### Règles pour alertes générées par IA
+- Toute alerte AI doit inclure: explainability (short rationale), confidence (0..1), sources (list), modelVersion, timestamp
+- Default: IA alerts are suggestions. Require user opt-in to auto-execute.
+
+### Exemple d'alerte IA
+```json
+{
+  "id":"ia_alert_001",
+  "symbol":"AAPL",
+  "type":"sentiment_shift",
+  "confidence":0.82,
+  "explain":"Augmentation significative des mentions négatives après publication de guidance",
+  "sources":["news:nytimes:2025-09-18:...","twitter:..."],
+  "model":"finbert-v1",
+  "createdAt":"2025-09-18T09:00:00Z"
+}
+```
+
+### Garde-fous humains
+- Tag autoExecute:false par défaut pour IA
+- Historique des alertes et possibilité d'audit
+- Rate-limiting des alertes IA pour éviter spam
+
+## 11) Gestion des erreurs & Observabilité
+
+### Error handling
+- Use typed error classes (e.g., APIError {code, message, retriable, meta})
+- Central error middleware (capturer et normaliser)
+- Circuit-breaker patterns (Opossum for Node)
+- Retry with exponential backoff (axios-retry / backoff libs)
+
+### Monitoring & Logs
+- Traces: OpenTelemetry
+- Errors: Sentry
+- Metrics: Prometheus
+- Dashboards: Grafana
+
+## 12) Sécurité & gestion des clés
+- Store secrets in KMS (AWS KMS / HashiCorp Vault)
+- Never store API keys in repo. Use encrypted env in deploy and secure local dev .env.local.example
+- Per-user tokenization for broker keys; never keep plaintext
+- Scopes: separate read-only vs trading keys
+- Rate-limit and IP allowlists
+
+## 13) Tests & CI/CD
+- Unit tests: Jest (TS), PyTest for Python
+- Integration: Playwright for E2E
+- Backtest reproducibility tests: snapshot results hash
+- CI: GitHub Actions — run lint, tests, build, deploy to staging
+
+## 14) Librairies recommandées (rapide liste copiable)
+
+### Frontend
+- next (Next.js), react, typescript, tailwindcss, zustand, react-query
+- charts: lightweight-charts, react-stockcharts, tradingview-charting-library (si licence)
+- websocket: reconnecting-websocket
+- tests: @testing-library/react, jest, playwright
+
+### Backend (Node TS)
+- framework: NestJS ou Express + TypeDI
+- db: pg, typeorm/prisma
+- queue: bullmq (Redis) ou Kafka (node-rdkafka)
+- monitoring: @opentelemetry/sdk-node, pino
+- error: @sentry/node, opossum (circuit-breaker)
+
+### Python (ML / backtest)
+- fastapi, uvicorn, pydantic
+- backtest: vectorbt, backtrader
+- nlp: transformers, datasets, spacy, finbert (huggingface)
+- data: pandas, numpy, ta-lib (bindings), ccxt (if needed)
+
+### Data storage & infra
+- TimescaleDB, ClickHouse, Redis, MinIO (S3)
+
+## 15) Checklist livrable & étapes suivantes (pratique)
+- Créer repo mono-repo (apps: web, api, ml, workers)
+- Init TS config (strict: true) + ESLint + Prettier
+- Intégrer chart de base avec lightweight-charts
+- Créer WS gateway & sample tick producer (Alpaca / Polygon)
+- Développer endpoint backtest minimal + worker Python vectorbt
+- Déployer pipeline sentiment (news -> NLP -> store)
+- Implémenter pentagone scoring + endpoint
+- Alert engine + UI pour règles
+- Tests unit & E2E + CI
+
+## Style & Archi (Warrior)
+- TypeScript strict. Types centraux dans `src/core/domain.ts`.
+- Architecture événements: tout passe via `bus` (`src/lib/event-bus.ts`).
+- UI = abonnée du bus (pas d'effets cachés). Tests/backtests via `recorder/replay`.
+- Erreurs toujours visibles, jamais silencieuses. Codes stables (`error-catalog.ts`).
+- Toast unique (`ToastProvider`). Action de remédiation proposée quand possible.
+- Charts synchronisés (tf, curseur/crosshair).
+- Bouton "Panique" visible en live. Badge état réseau + latence.
+- Command palette & raccourcis pour ordres/alertes.
+- Replays déterministes pour stratégies/backtests.
+- Mocks WS/REST en dev. Page `/system/health` obligatoire.
+- Journal d'audit: signaux, alertes, décisions, rejets broker.
+- Séparation stricte paper/live (clés, endpoints, webhooks).
+
+## TODO en continu
+- Remplir `features/backtesting`, `features/screener`, `features/watchlist` avec vraies sources & règles.
+- Ajouter bouton Panique global + limites journalières.

@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { useOrderHandlers } from '@/lib/hooks/useClickHandlers';
 
 interface OrderTicketProps {
   symbol: string;
   currentPrice: number;
-  onOrderSubmit: (order: OrderData) => void;
+  mode: 'paper' | 'live';
+  onOrderSubmit?: (order: OrderData) => void;
 }
 
 interface OrderData {
@@ -18,25 +20,43 @@ interface OrderData {
   limitPrice?: number;
 }
 
-export const OrderTicket = ({ symbol, currentPrice, onOrderSubmit }: OrderTicketProps) => {
+export const OrderTicket = ({ symbol, currentPrice, mode, onOrderSubmit }: OrderTicketProps) => {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [quantity, setQuantity] = useState(1);
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [limitPrice, setLimitPrice] = useState(currentPrice);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const { placeOrder, quickBuy, quickSell, isLoading, error } = useOrderHandlers(mode);
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
     try {
-      await onOrderSubmit({
+      const success = await placeOrder(
+        symbol,
         side,
         quantity,
         orderType,
-        limitPrice: orderType === 'limit' ? limitPrice : undefined,
-      });
-    } finally {
-      setIsSubmitting(false);
+        orderType === 'limit' ? limitPrice : undefined
+      );
+      
+      if (success && onOrderSubmit) {
+        onOrderSubmit({
+          side,
+          quantity,
+          orderType,
+          limitPrice: orderType === 'limit' ? limitPrice : undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Order submission failed:', error);
     }
+  };
+
+  const handleQuickBuy = async () => {
+    await quickBuy(symbol);
+  };
+
+  const handleQuickSell = async () => {
+    await quickSell(symbol);
   };
 
   return (
@@ -59,6 +79,26 @@ export const OrderTicket = ({ symbol, currentPrice, onOrderSubmit }: OrderTicket
             className="flex-1"
           >
             Sell
+          </Button>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={handleQuickBuy}
+            disabled={isLoading}
+            className="flex-1 text-green-600 border-green-600 hover:bg-green-50"
+          >
+            Quick Buy
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleQuickSell}
+            disabled={isLoading}
+            className="flex-1 text-red-600 border-red-600 hover:bg-red-50"
+          >
+            Quick Sell
           </Button>
         </div>
 
@@ -144,14 +184,22 @@ export const OrderTicket = ({ symbol, currentPrice, onOrderSubmit }: OrderTicket
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
+        )}
+
         {/* Submit Button */}
         <Button
           onClick={handleSubmit}
-          loading={isSubmitting}
+          loading={isLoading}
+          disabled={isLoading}
           className="w-full"
           variant={side === 'buy' ? 'primary' : 'danger'}
         >
-          {isSubmitting ? 'Submitting...' : `${side.toUpperCase()} ${quantity} ${symbol}`}
+          {isLoading ? 'Submitting...' : `${side.toUpperCase()} ${quantity} ${symbol}`}
         </Button>
       </div>
     </Card>

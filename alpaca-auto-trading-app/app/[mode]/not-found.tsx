@@ -7,7 +7,7 @@ interface NotFoundProps {
 }
 
 export default function ModeNotFound({ params }: NotFoundProps) {
-  const { mode } = params;
+  const { mode } = params || {};
   
   return (
     <div className="min-h-screen bg-ink flex items-center justify-center">
