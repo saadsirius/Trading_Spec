@@ -64,7 +64,8 @@ export default function Navbar() {
             <NavLink href="/screener">Screener</NavLink>
             <NavLink href="/symbol">Charts</NavLink>
             <NavLink href="/portfolio">Portfolio</NavLink>
-            <NavLink href="/alerts">Alerts</NavLink>
+            <NavLink href="/advisor/dashboard">Mon Conseiller</NavLink>
+            <NavLink href="/alerts/personal">Mes Alertes</NavLink>
             <NavLink href="/history">Historique</NavLink>
           </div>
 

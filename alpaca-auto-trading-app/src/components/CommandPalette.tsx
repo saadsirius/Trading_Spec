@@ -101,7 +101,8 @@ export default function CommandPalette() {
     });
     commandRegistry.add({ id: 'nav-screener', title: 'Ouvrir Screener', subtitle:'/screener', run: ()=>router.push('/screener'), tags:['nav','screener'], weight:1 });
     commandRegistry.add({ id: 'nav-portfolio', title: 'Voir Portfolio', subtitle:'/portfolio', run: ()=>router.push('/portfolio'), tags:['nav'], weight:1 });
-    commandRegistry.add({ id: 'nav-alerts', title: 'Gérer les Alertes', subtitle:'/alerts', run: ()=>router.push('/alerts'), tags:['nav','alerts'], weight:1 });
+    commandRegistry.add({ id: 'nav-advisor', title: 'Mon Conseiller Financier', subtitle:'/advisor/dashboard', run: ()=>router.push('/advisor/dashboard'), tags:['nav','advisor'], weight:1 });
+    commandRegistry.add({ id: 'nav-alerts-personal', title: 'Mes Alertes Personnelles', subtitle:'/alerts/personal', run: ()=>router.push('/alerts/personal'), tags:['nav','alerts'], weight:1 });
     commandRegistry.add({ id: 'nav-history', title: 'Voir Historique', subtitle:'/history', run: ()=>router.push('/history'), tags:['nav'], weight:1 });
     commandRegistry.add({ id: 'nav-ai-suggestions', title: 'AI Suggestions & Analysis (marché)', subtitle:'/ai/suggestions', run: ()=>router.push('/ai/suggestions'), tags:['ai','analysis'], weight:1 });
   }, [router]);

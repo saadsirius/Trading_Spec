@@ -119,3 +119,29 @@ model ai_suggestions_daily {
   @@index([day, score])
   @@index([day, symbol])
 }
+
+model user_profile {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  displayName  String?
+  riskLevel    Int     @default(2) // 1=conservateur, 2=équilibré, 3=dynamique
+  horizonYears Int     @default(5)
+  incomeYear   Float?  // revenu annuel
+  savingsRate  Float?  // % épargne
+  goalsJson    Json?   // [{type:"retirement", amount:...}, ...]
+  holdingsJson Json?   // [{symbol:"SPY", pct:0.4}, ...]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model advisor_feedback {
+  id          String   @id @default(cuid())
+  ts          DateTime @default(now())
+  symbol      String
+  action      String   // "buy" | "add" | "trim" | "hold" | "sell"
+  score       Float
+  decision    String   // "accepted" | "rejected"
+  contextJson Json     // snapshot params/weights
+  userEmail   String
+  @@index([userEmail, ts])
+}
