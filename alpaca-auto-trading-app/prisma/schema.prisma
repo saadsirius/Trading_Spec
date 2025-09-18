@@ -222,3 +222,117 @@ model integration_snapshot {
   createdAt DateTime @default(now())
   @@index([userEmail, day])
 }
+
+model agent_run {
+  id         String   @id @default(cuid())
+  userEmail  String
+  ts         DateTime @default(now())
+  agent      String   // 'tech' | 'sentiment' | 'macro' | 'fusion'
+  inputJson  Json
+  outputJson Json
+  reward     Float?   // PnL ou métrique proxy
+  @@index([userEmail, ts])
+}
+
+model meta_model {
+  id         String   @id @default(cuid())
+  userEmail  String
+  name       String   // 'maml_tech_v1' ...
+  params     Bytes    // poids sérialisés (Float32)
+  metaInfo   Json
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  @@unique([userEmail, name])
+}
+
+model evo_experiment {
+  id         String   @id @default(cuid())
+  userEmail  String
+  name       String
+  bestJson   Json
+  historyJson Json
+  objectives Json      // { sharpe, mdd, hitrate, turnover }
+  createdAt  DateTime  @default(now())
+  @@index([userEmail, createdAt])
+}
+
+model rule_trace {
+  id         String   @id @default(cuid())
+  userEmail  String
+  symbol     String
+  firedJson  Json      // règles tirées + poids
+  score      Float
+  advice     String
+  createdAt  DateTime  @default(now())
+  @@index([userEmail, symbol, createdAt])
+}
+
+model monitor_event {
+  id         String   @id @default(cuid())
+  kind       String   // 'drift'|'latency'|'error'|'autofix'
+  detail     String
+  metaJson   Json
+  createdAt  DateTime  @default(now())
+}
+
+model behavior_profile {
+  id         String   @id @default(cuid())
+  userEmail  String   @unique
+  lossAversion Float  @default(2.0)   // λ de prospect theory (≈2 par défaut)
+  overconfidence Float @default(0.0)  // [-1..+1]
+  riskTolerance Float  @default(0.5)  // [0..1] dynamique
+  lastUpdate   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}
+
+model roi_run {
+  id         String   @id @default(cuid())
+  userEmail  String
+  symbol     String
+  horizon    String   // 'short'|'mid'|'long'
+  inputsJson Json     // paramètres
+  resultsJson Json    // { sharpe, sortino, calmar, expRoi, var95, sensi, causal, path }
+  createdAt  DateTime @default(now())
+  @@index([userEmail, symbol, createdAt])
+}
+
+model roi_config {
+  id         String   @id @default(cuid())
+  userEmail  String   @unique
+  minExpectedRoi Float @default(0.02)  // 2% requis pour exécuter
+  horizonPrefs   Json
+  esgPrefs       Json   // {E,S,G} 0..1
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model conscious_metric {
+  id        String   @id @default(cuid())
+  userEmail String
+  context   String   // 'order'|'advice'|'portfolio'
+  ethic     Float    // 0..1
+  social    Float    // 0..1
+  emotion   Float    // 0..1 (charge cognitive estimée)
+  note      String?
+  createdAt DateTime @default(now())
+  @@index([userEmail, context, createdAt])
+}
+
+model sim_universe {
+  id        String   @id @default(cuid())
+  userEmail String
+  name      String
+  seeds     Json       // paramètres de génération (MC/branching)
+  summary   Json       // synthèse probabiliste multi-univers
+  createdAt DateTime   @default(now())
+  @@index([userEmail, createdAt])
+}
+
+model auto_heal_event {
+  id        String   @id @default(cuid())
+  userEmail String?
+  symptom   String   // 'drawdown_spike'|'latency'|'model_drift'
+  action    String   // 'swap_submodel'|'reparam'|'rollback'
+  detail    Json
+  createdAt DateTime @default(now())
+}
