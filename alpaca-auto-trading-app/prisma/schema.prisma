@@ -1,379 +1,105 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-enum TradingMode {
-  PAPER
-  LIVE
-}
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  liveEnabled Boolean @default(false) // feature switch
-  liveApprovedAt DateTime?
-  liveAckHash  String?                 // hash of "I understand the risks"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  accountLinks         AccountLink[]
-  positions           Position[]
-  orders              Order[]
-  tradeJournal        TradeJournal[]
-  notificationSubscriptions NotificationSubscription[]
-  backtestRuns        BacktestRun[]
-  portfolioSnapshots  PortfolioSnapshot[]
-  aiSignals           AISignal[]
-  watchlists          Watchlist[]
-
-  @@map("users")
-}
-
-model AccountLink {
-  id          String   @id @default(cuid())
-  userId      String
-  alpacaKey   String   // Encrypted
-  alpacaSecret String  // Encrypted
-  isLiveMode  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("account_links")
+model Trade {
+  id           String   @id @default(cuid())
+  symbol       String
+  side         String   // buy/sell
+  qty          Float
+  price        Float
+  filledAt     DateTime
+  strategyTag  String?  // optionnel
+  pnl          Float?   // PnL de la trade (si calculé)
+  createdAt    DateTime @default(now())
+  
+  @@index([symbol])
+  @@index([filledAt])
 }
 
 model Position {
-  id            String   @id @default(cuid())
-  userId        String
-  symbol        String
-  side          String   // "long" or "short"
-  quantity      Float
-  avgPrice      Float
-  marketValue   Float
-  unrealizedPL  Float
-  unrealizedPLPercent Float
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, symbol])
-  @@map("positions")
-}
-
-model Order {
-  id            String   @id @default(cuid())
-  userId        String
-  symbol        String
-  side          String   // "buy" or "sell"
-  quantity      Float
-  orderType     String   // "market", "limit", "stop", "stop_limit"
-  limitPrice    Float?
-  stopPrice     Float?
-  status        String   // "pending", "filled", "cancelled", "rejected"
-  alpacaOrderId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("orders")
-}
-
-model TradeJournal {
-  id            String   @id @default(cuid())
-  userId        String
-  symbol        String
-  side          String   // "buy" or "sell"
-  quantity      Float
-  price         Float
-  orderType     String
-  status        String
-  alpacaOrderId String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("trade_journal")
-}
-
-model NotificationSubscription {
   id        String   @id @default(cuid())
-  userId    String
-  endpoint  String
-  p256dh    String
-  auth      String
+  symbol    String   @unique
+  qty       Float
+  avgPrice  Float
+  updated   DateTime @updatedAt
+  
+  @@index([symbol])
+}
+
+model PnLDay {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  realized  Float    // PnL réalisé
+  unrealized Float?  // optionnel
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, endpoint])
-  @@map("notification_subscriptions")
+  
+  @@index([date])
 }
 
-model BacktestRun {
+model AlertRule {
   id          String   @id @default(cuid())
-  userId      String
-  strategy    String
   symbol      String
-  timeframe   String
-  startDate   DateTime
-  endDate     DateTime
-  initialCapital Float
-  finalCapital   Float
-  totalReturn    Float
-  totalReturnPercent Float
-  maxDrawdown    Float
-  maxDrawdownPercent Float
-  sharpeRatio    Float
-  winRate        Float
-  totalTrades    Int
-  winningTrades  Int
-  losingTrades   Int
-  avgWin         Float
-  avgLoss        Float
-  profitFactor   Float
-  createdAt      DateTime @default(now())
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("backtest_runs")
+  type        String   // "sentiment", "volatility", "donchian", "adx"
+  paramsJson  String   // JSON params (ex: {"lookback":20,"threshold":0.7})
+  active      Boolean  @default(true)
+  lastFiredAt DateTime?
+  createdAt   DateTime @default(now())
+  
+  @@index([symbol])
+  @@index([active])
 }
 
-// Discovery and Portfolio Models
-enum InstrumentType {
-  STOCK
-  ETF
-  CRYPTO
-  CFD
-  BOND
-  COMMODITY
-  FOREX
+model WatchItem {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  note      String?
+  createdAt DateTime @default(now())
+  
+  @@index([symbol])
 }
 
-enum Sector {
-  TECHNOLOGY
-  HEALTHCARE
-  FINANCIAL
-  CONSUMER_DISCRETIONARY
-  CONSUMER_STAPLES
-  ENERGY
-  INDUSTRIALS
-  MATERIALS
-  UTILITIES
-  REAL_ESTATE
-  COMMUNICATION
-  OTHER
+model FactorSnapshot {
+  id        String   @id @default(cuid())
+  symbol    String
+  asOf      DateTime @default(now())
+  momentum  Float
+  value     Float
+  quality   Float
+  risk      Float
+  growth    Float
+  
+  @@index([symbol, asOf])
 }
 
-enum Region {
-  NORTH_AMERICA
-  EUROPE
-  ASIA_PACIFIC
-  EMERGING_MARKETS
-  GLOBAL
+model NewsCache {
+  id        String   @id @default(cuid())
+  symbol    String?
+  source    String   // polygon|finnhub|newsapi
+  title     String
+  url       String
+  published DateTime
+  sentiment Float?   // -1..+1
+  rawJson   String
+  createdAt DateTime @default(now())
+  
+  @@index([symbol])
+  @@index([published])
 }
 
-model Instrument {
-  id              String   @id @default(cuid())
-  symbol          String   @unique
-  name            String
-  type            InstrumentType
-  sector          Sector?
-  region          Region?
+model EconEvent {
+  id         String   @id @default(cuid())
+  country    String?
+  title      String
+  date       DateTime
+  impact     String?
+  rawJson    String
+  createdAt  DateTime @default(now())
   
-  // Basic info
-  description     String?
-  website         String?
-  logo            String?
-  
-  // Financial metrics
-  marketCap       Float?
-  price           Float
-  currency        String   @default("USD")
-  changePercent   Float    @default(0)
-  volume          Float?
-  avgVolume       Float?
-  
-  // ETF/CFD specific
-  expenseRatio    Float?   // For ETFs
-  dividendYield   Float?
-  peRatio         Float?
-  pbRatio         Float?
-  
-  // Risk metrics
-  volatility      Float?   // 30-day volatility
-  beta            Float?
-  sharpeRatio     Float?
-  
-  // Liquidity
-  bidAskSpread    Float?
-  avgSpread       Float?
-  liquidityScore  Float?   // 0-100
-  
-  // Trading info
-  minOrderSize    Float?
-  maxOrderSize    Float?
-  tickSize        Float?
-  lotSize         Float?
-  
-  // Metadata
-  isActive        Boolean  @default(true)
-  isTradeable     Boolean  @default(true)
-  tags            String[] // For filtering
-  lastUpdated     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  priceBars       PriceBar[]
-  portfolioSnapshots PortfolioSnapshot[]
-  aiSignals       AISignal[]
-  watchlistItems  WatchlistItem[]
-
-  @@map("instruments")
-}
-
-model PriceBar {
-  id            String   @id @default(cuid())
-  instrumentId  String
-  timestamp     DateTime
-  open          Float
-  high          Float
-  low           Float
-  close         Float
-  volume        Float
-  timeframe     String   @default("1D") // 1m, 5m, 1h, 1D, 1W, 1M
-  
-  // Relations
-  instrument    Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-
-  @@unique([instrumentId, timestamp, timeframe])
-  @@index([instrumentId, timestamp])
-  @@map("price_bars")
-}
-
-model PortfolioSnapshot {
-  id              String   @id @default(cuid())
-  userId          String
-  instrumentId    String
-  mode            TradingMode
-  
-  // Position data
-  quantity        Float
-  avgPrice        Float
-  currentPrice    Float
-  marketValue     Float
-  unrealizedPL    Float
-  unrealizedPLPercent Float
-  
-  // Performance metrics
-  realizedPL      Float    @default(0)
-  totalReturn     Float    @default(0)
-  totalReturnPercent Float @default(0)
-  
-  // Risk metrics
-  positionSize    Float    // % of portfolio
-  riskContribution Float?  // Risk contribution to portfolio
-  
-  // Metadata
-  snapshotDate    DateTime @default(now())
-  createdAt       DateTime @default(now())
-
-  // Relations
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, instrumentId, mode, snapshotDate])
-  @@index([userId, snapshotDate])
-  @@map("portfolio_snapshots")
-}
-
-model AISignal {
-  id              String   @id @default(cuid())
-  userId          String?
-  instrumentId    String
-  signalType      String   // BUY, SELL, HOLD
-  strength        Float    // 0-100
-  confidence      Float    // 0-100
-  timeframe       String   @default("1D")
-  
-  // Signal details
-  reasoning       String[]
-  riskLevel       String   // LOW, MEDIUM, HIGH
-  expectedDuration Int     // hours
-  
-  // Price targets
-  stopLoss        Float?
-  takeProfit      Float?
-  
-  // Performance tracking
-  isActive        Boolean  @default(true)
-  triggeredAt     DateTime?
-  closedAt        DateTime?
-  actualReturn    Float?
-  actualReturnPercent Float?
-  
-  // Metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  user            User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-
-  @@index([instrumentId, createdAt])
-  @@index([userId, createdAt])
-  @@map("ai_signals")
-}
-
-model Watchlist {
-  id              String   @id @default(cuid())
-  userId          String
-  name            String
-  description     String?
-  isDefault       Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  watchlistItems  WatchlistItem[]
-
-  @@map("watchlists")
-}
-
-model WatchlistItem {
-  id              String   @id @default(cuid())
-  watchlistId     String
-  instrumentId    String
-  addedAt         DateTime @default(now())
-  notes           String?
-
-  // Relations
-  watchlist       Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
-  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-
-  @@unique([watchlistId, instrumentId])
-  @@map("watchlist_items")
+  @@index([date])
 }

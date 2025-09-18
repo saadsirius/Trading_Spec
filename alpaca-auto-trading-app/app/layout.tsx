@@ -1,21 +1,14 @@
-import type { Metadata, Viewport } from 'next';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { WindBackground } from './components/WindBackground';
-import ToastProvider from '@/src/lib/ui/ToastProvider';
-import '../styles/globals.css';
+import './globals.css';
+import Navigation from '@/components/Navigation';
+import Providers from '@/components/Providers';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Alpaca Auto-Trading App',
-  description: 'AI-powered trading platform with paper and live trading',
-  manifest: '/manifest.json',
-};
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  themeColor: '#3b82f6',
+  title: 'Alpaca Trading Platform',
+  description: 'Professional trading platform with Alpaca integration',
 };
 
 export default function RootLayout({
@@ -25,17 +18,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-      </head>
       <body className={inter.className}>
-        <ToastProvider />
-        <WindBackground>
-          {children}
-        </WindBackground>
+        <Providers>
+          <div className="min-h-screen bg-gray-900">
+            <Navigation />
+            <main className="pt-16">
+              {children}
+            </main>
+          </div>
+        </Providers>
       </body>
     </html>
   );

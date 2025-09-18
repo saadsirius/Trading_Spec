@@ -1,96 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { createSSEStream, getSSEHeaders, checkRateLimit } from '@/lib/realtime';
-import { SSEEvent } from '@/lib/types/overview';
-
-const ModeSchema = z.enum(['paper', 'live']);
+import { NextRequest } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const modeParam = searchParams.get('mode');
-    
-    // Validate mode parameter
-    const modeResult = ModeSchema.safeParse(modeParam);
-    if (!modeResult.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid mode parameter', 
-          details: 'Mode must be "paper" or "live"' 
-        },
-        { status: 400 }
-      );
+  const { searchParams } = new URL(request.url);
+  const mode = searchParams.get('mode') || 'paper';
+
+  // Create a readable stream for SSE
+  const stream = new ReadableStream({
+    start(controller) {
+      // Send initial connection message
+      const data = JSON.stringify({
+        type: 'connected',
+        mode,
+        timestamp: new Date().toISOString()
+      });
+      controller.enqueue(`data: ${data}\n\n`);
+
+      // Send periodic updates (every 5 seconds)
+      const interval = setInterval(() => {
+        const update = JSON.stringify({
+          type: 'update',
+          mode,
+          timestamp: new Date().toISOString(),
+          data: {
+            // Mock data for now
+            portfolioValue: 100000 + Math.random() * 10000,
+            dayPnl: (Math.random() - 0.5) * 2000,
+            positions: [
+              { symbol: 'AAPL', qty: 100, price: 150 + Math.random() * 10 },
+              { symbol: 'MSFT', qty: 50, price: 300 + Math.random() * 20 }
+            ]
+          }
+        });
+        controller.enqueue(`data: ${update}\n\n`);
+      }, 5000);
+
+      // Clean up on close
+      request.signal.addEventListener('abort', () => {
+        clearInterval(interval);
+        controller.close();
+      });
     }
+  });
 
-    const mode = modeResult.data;
-    
-    // For demo purposes, using a static user ID
-    const userId = 'demo-user';
-    
-    // Rate limiting for SSE connections (max 1 per user per mode)
-    const rateLimitKey = `sse:${userId}:${mode}`;
-    const isAllowed = checkRateLimit(rateLimitKey, 1, 60000); // 1 connection per minute
-    
-    if (!isAllowed) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Connection limit exceeded',
-          details: 'Only one SSE connection allowed per user per mode'
-        },
-        { status: 429 }
-      );
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
     }
-
-    // Live mode security check
-    if (mode === 'live') {
-      // In production, check user.liveEnabled from database
-    }
-
-    // Create SSE stream
-    const stream = createSSEStream(userId, mode);
-    
-    // Simulate some mock updates for demo
-    // In production, this would be triggered by real Alpaca WebSocket events
-    setTimeout(() => {
-      const mockKPIUpdate: SSEEvent = {
-        type: 'KPI_UPDATE',
-        data: {
-          equity: 10025.42,
-          cash: 2011.77,
-          dayPnL: 35.21,
-        }
-      };
-      
-      // Broadcast would be called from Alpaca WebSocket handlers
-      // broadcastToUser(userId, mode, mockKPIUpdate);
-    }, 5000);
-
-    return new NextResponse(stream, {
-      headers: getSSEHeaders(),
-    });
-
-  } catch (error) {
-    console.error('Error in /api/overview/stream:', error);
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Internal server error',
-        details: 'Failed to establish SSE connection'
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  return NextResponse.json(
-    { 
-      success: false, 
-      error: 'Method not allowed' 
-    },
-    { status: 405 }
-  );
+  });
 }

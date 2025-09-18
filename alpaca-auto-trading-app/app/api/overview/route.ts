@@ -1,90 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { OverviewAggregator } from '@/lib/overview';
-import { checkRateLimit, getRateLimitHeaders } from '@/lib/realtime';
-
-const ModeSchema = z.enum(['paper', 'live']);
+import { prisma } from '@/lib/core/db';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const modeParam = searchParams.get('mode');
-    
-    // Validate mode parameter
-    const modeResult = ModeSchema.safeParse(modeParam);
-    if (!modeResult.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid mode parameter', 
-          details: 'Mode must be "paper" or "live"' 
-        },
-        { status: 400 }
-      );
-    }
+    const mode = searchParams.get('mode') || 'paper';
 
-    const mode = modeResult.data;
+    // Get portfolio summary
+    const positions = await prisma.position.findMany();
+    const totalValue = positions.reduce((sum, pos) => sum + (pos.qty * pos.avgPrice), 0);
     
-    // For demo purposes, using a static user ID
-    // In production, this would come from session/auth
-    const userId = 'demo-user';
-    
-    // Rate limiting
-    const rateLimitKey = `overview:${userId}:${mode}`;
-    const isAllowed = checkRateLimit(rateLimitKey, 30, 60000); // 30 req/min
-    
-    if (!isAllowed) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Rate limit exceeded',
-          details: 'Too many requests. Please try again later.'
-        },
-        { status: 429 }
-      );
-    }
+    // Get recent trades
+    const recentTrades = await prisma.trade.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 5
+    });
 
-    // Live mode security check
-    if (mode === 'live') {
-      // In production, check user.liveEnabled from database
-      // For now, allowing live mode for demo
-    }
+    // Get daily PnL
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dailyPnl = await prisma.pnLDay.findFirst({
+      where: { date: today }
+    });
 
-    // Aggregate overview data
-    const aggregator = new OverviewAggregator(userId, mode);
-    const overviewData = await aggregator.getOverviewData();
-
-    const headers = {
-      'Cache-Control': 'private, max-age=5, s-maxage=5',
-      'Surrogate-Key': `overview:user:${userId}:${mode}`,
-      ...getRateLimitHeaders(rateLimitKey, 30, 60000),
+    const overview = {
+      mode,
+      portfolio: {
+        totalValue,
+        dayPnl: dailyPnl?.realized || 0,
+        dayPnlPct: totalValue > 0 ? ((dailyPnl?.realized || 0) / totalValue) * 100 : 0,
+        positions: positions.length,
+        cash: 10000 // Mock cash
+      },
+      recentTrades: recentTrades.map(trade => ({
+        id: trade.id,
+        symbol: trade.symbol,
+        side: trade.side,
+        qty: trade.qty,
+        price: trade.price,
+        timestamp: trade.createdAt
+      })),
+      timestamp: new Date().toISOString()
     };
 
-    return NextResponse.json({
-      success: true,
-      data: overviewData,
-    }, { headers });
-
+    console.log('Overview data fetched successfully', { mode });
+    return NextResponse.json(overview);
   } catch (error) {
-    console.error('Error in /api/overview:', error);
-    
+    console.error('Error fetching overview', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Internal server error',
-        details: 'Failed to fetch overview data'
-      },
+      { error: 'Failed to fetch overview' },
       { status: 500 }
     );
   }
-}
-
-export async function POST(request: NextRequest) {
-  return NextResponse.json(
-    { 
-      success: false, 
-      error: 'Method not allowed' 
-    },
-    { status: 405 }
-  );
 }

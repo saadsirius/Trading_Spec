@@ -1,0 +1,249 @@
+VISION & CAP
+	•	Objectif : expérience pro "trader-first" avec qualité visuelle et ergonomie TradingView/Trading212, analyse IA/quant propriétaire, exécution Alpaca (paper/live), backtesting traçable, observabilité complète.
+	•	Règle d'or : toute feature branchée = métriques + logs + tests + critères de validation. Toute régression détectée = alerte + ticket + rollback rapide si nécessaire.
+	•	Priorités UX : latence basse, charts lisibles, workflows 1–2 clics, erreurs explicites et récupérables, pas de "magie noire" (explications des signaux/notations).
+
+────────────────────────────────────────────────────────────────────────
+ENVIRONNEMENT & SECRETS (déjà présents + à vérifier)
+	•	Déjà ajoutés : APCA_API_KEY_ID, APCA_API_SECRET_KEY, APCA_PAPER_BASE_URL, SECRET_KEY, OPENAI_API_KEY, JWT_SECRET.
+	•	À ajouter/valider (si pas déjà) : APCA_LIVE_BASE_URL, MODE (paper|live), POLYGON_API_KEY, FINNHUB_API_KEY, NEWSAPI_KEY (fallback), TRADING_ECONOMICS_KEY (selon plan), DATABASE_URL (sqlite ou postgres), NOTIFY_EMAIL_FROM, SMTP_HOST/PORT/USER/PASS (si email), WEBPUSH_PUBLIC_KEY/WEBPUSH_PRIVATE_KEY/WEBPUSH_VAPID_SUBJECT (si webpush), LOG_LEVEL (info), METRICS_ENABLED (true), NEXT_PUBLIC_MARKETDATA_PROVIDER (polygon|alpaca).
+	•	Sécurité : ne jamais committer .env ; rotation périodique des clés ; activer une CSP stricte et limiter l'origine des requêtes sortantes.
+
+────────────────────────────────────────────────────────────────────────
+ARCHITECTURE LOGIQUE (sans code)
+	•	libs/api/alpaca : client ordres/positions/compte (remplacer tous les mocks).
+	•	libs/providers : polygon, finnhub, newsapi, tradingEconomics (fetch/normalisation/cache).
+	•	libs/charts : helpers pour lightweight-charts (thèmes, séries, multi-timeframe).
+	•	libs/indicators : indicateurs (RSI, MACD, ADX, Donchian, ATR, Bollinger, VWAP, etc.), compatibles MTF.
+	•	libs/factors : computeFactors(symbol) → Momentum/Value/Quality/Risk/Growth [0–100].
+	•	libs/sentiment : mini-modèle (lexique VADER adapté finance + mapping provider→score) + agrégations rolling.
+	•	libs/pnl : agrégations PnL journalier (cash-flow aware, fees, FX v2), cumul, drawdown, rolling stats.
+	•	libs/backtest : moteur bar-by-bar no-peek, frais/commissions, slippage (bps/ATR), position sizing, stops, TP, trailing ; métriques (CAGR, Sharpe, Sortino, MDD, Calmar, expectancy, hit-rate, exposition).
+	•	libs/alertsEngine : règles (RSI seuil, Donchian breakout, ADX, volatilité, sentiment, événements) + déduplication + cooldown.
+	•	libs/log : pino logger structuré (correlationId, reqId, userId) + redaction secrets.
+	•	libs/metrics : exposition Prometheus (latences, taux d'erreurs, nb alertes, eval/sec, temps fetch).
+	•	db (schéma conceptuel) : trades, positions, pnl_daily, alerts_rules, alerts_events, watchlists, watchlist_items, backtests, news_cache, factors_cache (option), calendar_cache.
+
+────────────────────────────────────────────────────────────────────────
+ROUTES API (Next.js ou équivalent) – CONTRATS
+	•	/api/orders : création/annulation/état d'ordres (idempotence, validation entrées, erreurs claires, retries limités).
+	•	/api/positions : lecture positions en temps réel Alpaca + calculs (PnL unrealized).
+	•	/api/news : headlines par symbole + normalisation + cache court (15 min) + sentiment compute.
+	•	/api/calendar : earnings (Polygon/Finnhub) + macro (TradingEconomics), filtrage par date/symbole/impact.
+	•	/api/pnl : PnL journalier agrégé (by date, by symbole, by stratégie), cumul, drawdown, rolling.
+	•	/api/backtest : exécution sandbox (no-peek), résultat normalisé (trades simulés + equity curve + métriques) + export CSV/PNG.
+	•	/api/screener : filters (momentum>70, value>60, etc.), tri, pagination, presets, counts.
+	•	/api/watchlist : CRUD watchlists + items (tags, notes, objectifs, seuils).
+	•	/api/alerts : CRUD règles (type, params, cooldown, canaux) + état.
+	•	/api/alerts/eval : évaluation périodique (cron/worker) toutes 1–5 minutes, avec fenêtre anti-spam.
+	•	/api/metrics : exposition Prometheus en lecture seule (OK en prod derrière auth interne).
+
+────────────────────────────────────────────────────────────────────────
+PAGES & ACCEPTANCE CRITERIA (UX)
+	•	/symbol/[id]
+• Chart pro lightweight-charts (zoom/pan fluide, crosshair, comparaisons, overlays).
+• Indicateurs clés activables (RSI/MACD/ADX/ATR/Bollinger/SMA/EMA/VWAP/Donchian/Supertrend).
+• Multi-timeframe (ex : chart 5min avec EMA 1H). Pas de fuite d'info.
+• Panneau latéral "Data Deck" : news + sentiment agrégé 1–7j, calendrier earnings/macro, facteurs radar (Investing Warriors), profil rapide (ratios clés).
+• Boutons rapides : Acheter/Vendre (paper), Alerte, Backtester, Ajouter Watchlist.
+• Replayer (bar replay) pour review visuelle.
+	•	/screener
+• Tableau paginé (200+ lignes) avec filtres (Momentum/Value/Quality/Risk/Growth, prix, vol, secteur, marché).
+• Tri multi-colonnes ; presets enregistrables ; mini sparkline + score radar dans la cellule.
+• Actions en ligne : ouvrir chart, ajouter à la watchlist, lancer backtest preset.
+	•	/history
+• Split panel : à gauche PnL journalier (barres + cumulé + drawdown) ; à droite News/Sentiment + Calendar.
+• Sélecteurs : période, symbole, stratégie. Surbrillance des jours à événements forts (earnings/macro/high impact).
+• Table drill-down : clic sur un jour ⇒ liste des trades, fees, notes, lien vers replayer.
+	•	/watchlist
+• Gestion multi-listes, tags, notes, objectifs (prix, date).
+• Seuils d'alertes par symbole (indicateurs, sentiment, volatilité, événements).
+• Résumé IA : explication courte des drivers (news/facteurs) et du contexte (trend/vol).
+	•	/portfolio
+• Valeur portefeuille, PnL realized/unrealized, heatmap PnL journalier, exposition par secteur/stratégie, concentration, top gains/pertes.
+• Risque : volatilité, MDD, VaR simple (v2), corrélations majeures.
+• Insights IA : "ce qui bouge" + anomalies (ex : écart PnL vs benchmark).
+	•	/click-demo (dev)
+• Démonstration des handlers cliquables avec debug visible si debug=click-handlers.
+
+────────────────────────────────────────────────────────────────────────
+CHARTS – QUALITÉ TRADINGVIEW (sans code)
+	•	Bibliothèque : lightweight-charts (choisie pour perf et qualité de rendu).
+	•	Série prix : bougies + Heikin-Ashi optionnel ; gaps visibles ; sessions.
+	•	Overlays : SMA/EMA/WMA/HMA ; VWAP session et ancré ; Bollinger/Keltner ; Supertrend.
+	•	Sous-panneaux : RSI/stoch RSI, MACD histogramme/lines, ADX (+DI/–DI), CCI, ROC, OBV.
+	•	Volatilité : ATR ; paramétrage périodes et unités (jours/barres).
+	•	Dessins (v1) : lignes/rays, zones, fib retracement ; (v2) aimants + snap OHLC ; sauvegarde layout par utilisateur.
+	•	Multi-timeframe : recalcul déterministe ; interpolation propre MTF ; pas de peeking.
+	•	Replayer : jouer l'historique bar-par-bar pour revue/backtest visuel.
+	•	Thèmes : clair/sombre uniformes ; police et spacing constants ; couleur PnL cohérente avec portfolio.
+
+────────────────────────────────────────────────────────────────────────
+FACTEURS RADAR "INVESTING WARRIORS"
+	•	Momentum : performance 6m et 12m, rangs en percentiles cross-section (univers filtré par liquidité).
+	•	Value : EV/EBITDA, P/B, P/E (inverse des z-scores), winsorisation, rescale 0–100.
+	•	Quality : ROE/ROIC, marge nette, stabilité earnings (écart-type YoY), z-scores → 0–100.
+	•	Risk : volatilité 30j/90j, max drawdown ; inversion (plus de risque = score plus bas).
+	•	Growth : CAGR revenus et earnings (3–5 ans), winsorisation, normalisation 0–100.
+	•	Radar : moyenne pondérée (par défaut poids 1 partout ; presets par style investisseur). Tooltips expliquant les calculs.
+
+────────────────────────────────────────────────────────────────────────
+NEWS + SENTIMENT + CALENDAR (sources réelles)
+	•	News : Polygon.io et Finnhub en primaire, NewsAPI en fallback. Déduplication par URL/hash, cache 15 min.
+	•	Sentiment : mini-modèle VADER adapté finance + mapping provider→score ; score headline ∈ [−1, 1], agrégé par symbole (EMA 1/3/7j).
+	•	Seuils : vert si au-dessus de moyenne + k*σ, rouge si en dessous ; neutral sinon. Éviter sur-sensibilité (hystérésis).
+	•	Calendar : earnings (Polygon/Finnhub) ; macro (TradingEconomics : CPI, NFP, FOMC, GDP, PMI…). Filtrage par impact et par symbole ; affichage timezone utilisateur ; surbrillance jours d'événements.
+
+────────────────────────────────────────────────────────────────────────
+WATCHLIST + ALERTES IA
+	•	Watchlist : listes nommées, tags, notes, objectifs (prix/date), champs custom.
+	•	Règles d'alertes :
+• Technique : RSI seuil, MACD cross, Donchian breakout (N haut/bas), ADX > x, ATR% > y, prix franchit VWAP/MA.
+• Sentiment : moyenne mobile 7j franchit seuil adaptatif (moyenne + k*σ).
+• Volatilité : rupture regime vol (ratio σ30/σ90).
+• Événements : earnings imminents, macro high-impact.
+	•	Anti-spam : cooldown par règle (15–60 min), dédup par symbole+type, fenêtre de silence après déclenchement.
+	•	Canaux : toast in-app, email, webpush (avec consent explicite).
+	•	Auditoria : chaque alerte = when/why/values (stockage pour traçabilité).
+
+────────────────────────────────────────────────────────────────────────
+PNL JOURNALIER ROBUSTE
+	•	Agrégations : par jour/stratégie/symbole ; cash-flow aware (dépôts/retraits), fees/commissions, FX (v2 multi-devises).
+	•	Courbes : PnL jour, cumulé, drawdown ; rolling (7/30/90 jours) ; heatmap calendrier.
+	•	Cohérence : backtest et live utilisent le même pipeline d'agrégation pour comparabilité.
+
+────────────────────────────────────────────────────────────────────────
+BACKTESTING (SANDBOX IDENTIQUE AU LIVE POUR L'AGRÉGATION)
+	•	Exécution bar-by-bar (no peek), univers et timeframe configurables.
+	•	Frais/commissions paramétrables ; slippage (bps ou multiple d'ATR).
+	•	Entrées/Sorties : croisement MA, breakout Donchian, ADX gating, RSI mean reversion, règles composables.
+	•	Risk : sizing (fixe, % capital, ATR), stop (ATR/%), take-profit multiples, trailing.
+	•	Résultats : trades simulés, equity curve, CAGR, Sharpe, Sortino, MDD, Calmar, expectancy, hit-rate, temps en position, exposition moyenne.
+	•	Export : CSV résultats, PNG equity curve. Monte-Carlo (v2) et walk-forward (v2).
+
+────────────────────────────────────────────────────────────────────────
+ALPACA – CONNEXION ORDRES/POSITIONS (PAPER/LIVE)
+	•	Brancher les ordres/positions dans libs/api/alpaca (idempotence via client_order_id).
+	•	Respect des rate limits ; retries avec backoff limité ; gestion des états (new, filled, partial, canceled).
+	•	Paper par défaut (MODE=paper), bascule live contrôlée par feature flag et confirmation explicite.
+
+────────────────────────────────────────────────────────────────────────
+OBSERVABILITÉ & RÉSILIENCE
+	•	Logs : pino JSON, niveaux info/warn/error, correlationId et reqId ; anonymiser/redacter secrets.
+	•	Metrics : Prometheus (latence par route, erreurs par type, eval alertes/min, temps de backtest, cache hit ratio).
+	•	Traces (v2) : OpenTelemetry sur fetch market data, backtests, ordres.
+	•	Résilience : retry + backoff, circuit-breaker simple (compteur d'échecs + cool-off), bascule provider (Polygon ↔ Alpaca) si indispo.
+	•	Debug dev : activer "debug=click-handlers" (stockage local) pour vérifier les interactions.
+
+────────────────────────────────────────────────────────────────────────
+SÉCURITÉ & CONFORMITÉ
+	•	Auth : JWT signé par SECRET_KEY ; durée raisonnable ; rafraîchissement contrôlé.
+	•	Permissions : routes sensibles protégées ; quotas par utilisateur en paper.
+	•	Réseau : CORS restreint ; HTTPS only ; CSP stricte ; SameSite cookies si utilisés.
+	•	Données : chiffrement au repos (si Postgres géré, au minimum chiffrement disque), sauvegardes régulières ; index sur colonnes clés.
+	•	Confidentialité : pas d'auto-trading IA sans action explicite ; expliquer les décisions automatiques (transparence).
+
+────────────────────────────────────────────────────────────────────────
+QUALITÉ, TESTS & CI QUE CURSOR DOIT "VERIFIER/BUILDER"
+	•	TypeScript strict : aucun any implicite dans indicateurs, agrégations, règles ; types précis pour symbol, timeframe, price/volume.
+	•	Lint/Format : ESLint + Prettier ; imports triés ; pas de dead code ; pas d'anti-patterns.
+	•	Tests unitaires : indicateurs (RSI, MACD, ADX, ATR, Donchian…), agrégation PnL (fees, dépôts, jours sans trades), normalisations facteurs, scoring sentiment.
+	•	Tests d'intégration : contrats providers (Polygon, Finnhub, NewsAPI, TradingEconomics) avec mocks réalistes, mapping → entités internes.
+	•	E2E (Playwright) parcours clés :
+	1.	afficher un chart, ajouter indicateur, activer MTF ;
+	2.	créer alerte RSI<30, simuler bar → alerte dédupliquée ;
+	3.	lancer backtest Donchian 20, vérifier métriques et export PNG/CSV ;
+	4.	screener momentum>70 + value>60 → résultats paginés ; ouvrir symbol → radar ok ;
+	5.	page history : PnL cumulé = somme des jours ; jours à événements surlignés.
+	•	Seuils d'acceptation :
+• TTI chart : < 1.2 s en dev, < 0.8 s en prod (CDN).
+• FPS zoom/pan fluide (aucun jank visible).
+• Couverture tests : ≥ 90% core (indicators, pnl, alerts).
+• Erreurs non gérées : 0 en console prod.
+	•	Artefacts CI : rapports de tests, captures equity curve, récap métriques (temps moyen /api/news, /api/screener, /api/backtest).
+
+────────────────────────────────────────────────────────────────────────
+SCREENER – DÉTAILS FACTEURS & PAGINATION
+	•	Univers : actions liquides (filtre par volume/float), indices/ETFs majeurs, crypto (option).
+	•	Normalisations :
+• Momentum : percentiles cross-section sur perf 6m et 12m (poids 50/50).
+• Value : EV/EBITDA, P/B, P/E inversés ; z-score par ratio ; winsorisation ; rescale 0–100.
+• Quality : ROE/ROIC, marge nette, stabilité earnings (σ YoY) inversée ; agrégée 0–100.
+• Risk : σ30, σ90, MDD ; inversé ; pénalités outliers.
+• Growth : CAGR revenus et earnings (3–5 ans) ; winsorisation ; 0–100.
+	•	Sort : par score composite (pondérations réglables) ; tie-breakers par momentum, puis quality.
+	•	UI : presets sauvegardés, colonnes re-ordonnables, export CSV.
+
+────────────────────────────────────────────────────────────────────────
+ALERTES – RÈGLES, EVAL & ANTI-SPAM
+	•	Types : CrossUp/CrossDown, Threshold (RSI<30, prix>VWAP), Breakout (Donchian N), Volatilité (ATR%/jour), Sentiment (EMA 7j), Événements (earnings/macro).
+	•	Évaluation : /api/alerts/eval toutes 1–5 min (cron/job) ; fenêtre de lookback limitée pour efficacité.
+	•	Cooldowns : par règle (ex. 30 min) ; dédup par (user, symbole, type) ; limite globale (max 5 alertes/min par utilisateur).
+	•	Canaux : toast, email, webpush ; préférences utilisateur ; centre d'alertes consultable avec historique.
+	•	Traçabilité : pour chaque alerte, conserver timestamp, valeurs déclencheuses, règle, message utilisateur-lisible.
+
+────────────────────────────────────────────────────────────────────────
+ERREURS & GESTION DE DÉFAUTS
+	•	Patterns : validation d'entrées (zod), résultats typés sûrs (neverthrow / Result), exhaustive checks (ts-pattern), messages d'erreurs compréhensibles.
+	•	Providers : timeouts clairs, retries limités, circuit-breaker ; fallback propre ; journaliser les quotas/429.
+	•	UX : toasts d'erreur avec CTA retry ; "Status" page (ping de /api/metrics lite) ; états loading/empty/error distincts.
+	•	Données : gérer trous OHLCV, jours fériés, sessions, splits/dividendes (v2).
+
+────────────────────────────────────────────────────────────────────────
+PERFORMANCE & BUDGETS
+	•	paralléliser fetchs (news, calendar, prix) ; cache mémoire LRU court ; option Redis (v2).
+	•	pagination côté serveur pour screener ; streaming progress pour backtests longs (v2).
+	•	charts : limiter recomputations ; MTF pré-échantillonné ; UI sans reflows inutiles.
+
+────────────────────────────────────────────────────────────────────────
+PORTFOLIO – CE QUI DOIT APPARAÎTRE
+	•	Valeur totale, cash, marge (si dispo), PnL realized/unrealized ; rendement total et YTD.
+	•	Heatmap PnL journalier ; histogramme PnL ; drawdown.
+	•	Exposition par secteur/stratégie/symbole ; top 5 gains/pertes ; rotation récente.
+	•	Risque : σ portefeuille, MDD, VaR simple (v2) ; corrélations avec benchmarks.
+	•	Insights IA : anomalies de PnL vs facteurs, journaux de trade (tags raison d'entrée/sortie, notes, captures replayer).
+
+────────────────────────────────────────────────────────────────────────
+ROADMAP COURTE (APRÈS MVP+)
+	•	Volume Profile session dynamique ; Market Profile/Footprint (si data).
+	•	Traces OpenTelemetry bout-en-bout.
+	•	Monte-Carlo + walk-forward intégrés à l'UI.
+	•	Options/Greeks (univers étendu).
+	•	Auto-hedging simple (beta-hedge vs indice).
+	•	Centre préférences notification/webpush.
+
+────────────────────────────────────────────────────────────────────────
+DEFINITION OF DONE (PAR FEATURE)
+	1.	Données fiables (tests + fallback provider).
+	2.	UX fluide (≤ 2 clics pour l'action principale, tooltips, états loading/erreur).
+	3.	Logs + métriques branchés (pino + Prometheus).
+	4.	Tests unit + au moins 1 test E2E pertinent.
+	5.	Documentation succincte (1 paragraphe de ce que fait la feature + paramètres clés).
+	6.	Cursor build passe : typecheck + lint + tests + e2e ; pas d'erreurs non capturées.
+
+────────────────────────────────────────────────────────────────────────
+CHECKLIST "FORCER CURSOR À VÉRIFIER/TESTER/BUILD"
+	•	Toujours lancer successivement (ou pipeline CI) :
+• TypeScript strict (aucun any implicite dans core).
+• ESLint + Prettier (imports triés, no-unused, no-explicit-any).
+• Tests unitaires (indicators, pnl, sentiment, factors).
+• Tests d'intégration (providers, mapping, erreurs).
+• E2E (parcours charts, alertes, backtest, screener).
+	•	Condition de merge : tous les checks verts + couverture core ≥ 90% + TTI chart OK + 0 erreur console prod.
+	•	Si un test casse : créer ticket, rollback ou hotfix ; ne pas ignorer un test rouge.
+
+────────────────────────────────────────────────────────────────────────
+TROUBLESHOOTING RAPIDE (CAS FRÉQUENTS)
+	•	Charts lents : vérifier MTF (pas de recompute inutile), réduire nombre de séries visibles, profiler mesure FPS.
+	•	Screener vide : vérifier clés providers, quotas, filtres trop stricts, normalisations (winsorisation).
+	•	Alertes spam : augmenter cooldown, renforcer dédup, ajouter hystérésis sur seuils.
+	•	PnL incohérent : vérifier cash-flows (dépôts/retraits), fuseau horaire, fees, agrégation par jour.
+	•	News répétées : déduplication par URL/hash, TTL cache, fallback non simultané.
+	•	Échecs providers : appliquer retries backoff, circuit-breaker, fallback provider, logs d'alerte avec contexte.
+
+────────────────────────────────────────────────────────────────────────
+PRINCIPES FONDATEURS (À RELIRE AVANT CHAQUE COMMIT)
+	•	Clarté > complexité : une explication simple de chaque score/signal.
+	•	Un seul moteur d'agrégation PnL (live = backtest) pour des comparaisons honnêtes.
+	•	Les facteurs et signaux doivent rester auditables : montrer le "pourquoi" au clic.
+	•	Toujours garder le cap : charts parfaits, PnL exact, alertes pertinentes, observabilité en place.
