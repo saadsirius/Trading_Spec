@@ -97,6 +97,72 @@ body {
   background: rgba(0,0,0,.04); 
 }
 
+/* Curseur custom (anneau + point) contrôlé par variables CSS */
+:root {
+  --cursor-x: 0px;
+  --cursor-y: 0px;
+  --cursor-size: 22px;
+  --cursor-dot: 6px;
+  --cursor-color: var(--ds-accent, #22d3ee);
+}
+.cursor-ring, .cursor-dot {
+  position: fixed; 
+  pointer-events: none; 
+  z-index: 9999; 
+  mix-blend-mode: difference;
+  left: calc(var(--cursor-x) - var(--cursor-size) / 2);
+  top:  calc(var(--cursor-y) - var(--cursor-size) / 2);
+  transition: transform .08s ease-out, opacity .2s ease;
+}
+.cursor-ring { 
+  width: var(--cursor-size); 
+  height: var(--cursor-size); 
+  border: 2px solid var(--cursor-color); 
+  border-radius: 999px; 
+}
+.cursor-dot  { 
+  width: var(--cursor-dot); 
+  height: var(--cursor-dot); 
+  background: var(--cursor-color); 
+  border-radius: 999px; 
+  left: calc(var(--cursor-x) - var(--cursor-dot)/2); 
+  top: calc(var(--cursor-y) - var(--cursor-dot)/2); 
+}
+
+/* Zones sémantiques */
+[data-cursor="grab"] { cursor: grab; }
+[data-cursor="trade"] { cursor: crosshair; }
+
+/* Canvas Houdini background (optionnel): */
+.hero-paint {
+  background: paint(ripple-bg);
+}
+
+/* Tooltips suiveurs */
+.tooltip-follow {
+  position: fixed; 
+  z-index: 60; 
+  transform: translate3d(0,0,0);
+  background: var(--ds-card); 
+  border: 1px solid var(--ds-border); 
+  border-radius: 10px; 
+  padding: 6px 10px; 
+  box-shadow: var(--ds-shadow);
+}
+
+/* Grille utilitaire (si non déjà livrée) */
+.grid-auto { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); 
+  gap: 12px; 
+}
+
+/* Drag preview */
+.drag-ghost { 
+  opacity: .6; 
+  transform: scale(.98); 
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
