@@ -1,5 +1,5 @@
 import { makeLRU } from './cache';
-import { alpacaSearchSymbols, alpacaSnapshot } from './providers/alpaca';
+import { alpacaSearchSymbols, alpacaSnapshot, TickerInfo } from './providers/alpaca';
 import { enrichCompany } from './providers/enrich';
 
 const cache = makeLRU<string, any>(200);
