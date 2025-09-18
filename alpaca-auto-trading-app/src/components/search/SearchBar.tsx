@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
-export default function SearchBar({ onResults }: { onResults: (items: any[]) => void }) {
+export default function SearchBar({ onResults, onQueryChange }: { onResults: (items: any[]) => void; onQueryChange?: (query: string) => void }) {
   const [q, setQ] = useState('');
   const [suggest, setSuggest] = useState<any[]>([]);
   const t = useRef<any>(null);
@@ -10,8 +10,11 @@ export default function SearchBar({ onResults }: { onResults: (items: any[]) => 
     if (!q) { 
       setSuggest([]); 
       onResults([]); 
+      onQueryChange?.('');
       return; 
     }
+    
+    onQueryChange?.(q);
     
     const id = setTimeout(async () => {
       const s = await fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`)
@@ -26,7 +29,7 @@ export default function SearchBar({ onResults }: { onResults: (items: any[]) => 
     }, 180);
     
     return () => clearTimeout(id);
-  }, [q, onResults]);
+  }, [q, onResults, onQueryChange]);
 
   return (
     <div className="ds-card p-2">

@@ -35,9 +35,11 @@ export default function Navbar() {
         e.preventDefault();
         const k = e.key.toLowerCase();
         if (k === 'h') router.push('/');            // Home
+        if (k === 'r') router.push('/search');      // Recherche
         if (k === 's') router.push('/screener');    // Screener
         if (k === 'p') router.push('/portfolio');   // Portfolio
         if (k === 'a') router.push('/alerts');      // Alerts
+        if (k === 'm') router.push('/lab/middleware'); // Middleware
         chord = '';
       }
     };
@@ -61,12 +63,14 @@ export default function Navbar() {
           {/* Nav links */}
           <div className="hidden md:flex items-center gap-1">
             <NavLink href="/" exact>Accueil</NavLink>
+            <NavLink href="/search">Recherche</NavLink>
             <NavLink href="/screener">Screener</NavLink>
             <NavLink href="/symbol">Charts</NavLink>
             <NavLink href="/portfolio">Portfolio</NavLink>
             <NavLink href="/advisor/dashboard">Mon Conseiller</NavLink>
             <NavLink href="/alerts/personal">Mes Alertes</NavLink>
             <NavLink href="/history">Historique</NavLink>
+            <NavLink href="/lab/middleware">Middleware</NavLink>
           </div>
 
           {/* Recherche rapide */}
