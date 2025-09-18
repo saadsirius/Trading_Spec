@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchNews } from "@/src/lib/api/news";
+import { fetchNews } from "@/lib/api/news";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);

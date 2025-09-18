@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { log, getReqId } from '@/src/mw/log';
-import { rateLimit } from '@/src/lib/rate/limiter';
-import { register, resolve } from '@/src/plugins';
-import { alpacaProvider } from '@/src/plugins/alpaca';
-import { aiProvider } from '@/src/plugins/ai';
+import { log, getReqId } from '@/mw/log';
+import { rateLimit } from '@/lib/rate/limiter';
+import { register, resolve } from '@/plugins';
+import { alpacaProvider } from '@/plugins/alpaca';
+import { aiProvider } from '@/plugins/ai';
 
 register(alpacaProvider);
 register(aiProvider);

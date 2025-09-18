@@ -1,5 +1,5 @@
 import { Provider } from './index';
-import { enqueueAI } from '@/src/queue';
+import { enqueueAI } from '@/queue';
 
 export const aiProvider: Provider = {
   id: 'ai',

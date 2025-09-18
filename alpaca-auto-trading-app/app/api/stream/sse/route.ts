@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { StreamQ } from '@/src/mw/validate';
+import { StreamQ } from '@/mw/validate';
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || '';
 

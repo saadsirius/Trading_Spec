@@ -1,4 +1,4 @@
-import { list } from '@/src/plugins';
+import { list } from '@/plugins';
 
 export async function GET() { 
   return Response.json({ items: list() }); 

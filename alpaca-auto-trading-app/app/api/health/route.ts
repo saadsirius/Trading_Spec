@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { redis } from '@/src/lib/cache/redis';
+import { redis } from '@/lib/cache/redis';
 
 export async function GET(req: NextRequest) {
   const start = Date.now();

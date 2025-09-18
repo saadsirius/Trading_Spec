@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchCalendar } from "@/src/lib/api/calendar";
+import { fetchCalendar } from "@/lib/api/calendar";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);

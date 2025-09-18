@@ -1,6 +1,6 @@
 import { Queue, Worker, JobsOptions } from 'bullmq';
-import { redis as connection } from '@/src/lib/cache/redis';
-import { log } from '@/src/mw/log';
+import { redis as connection } from '@/lib/cache/redis';
+import { log } from '@/mw/log';
 
 export const qAI = new Queue('ai-tasks', { connection });
 export const qBacktest = new Queue('bt-tasks', { connection });

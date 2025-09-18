@@ -1,6 +1,6 @@
 import { Provider } from './index';
-import { AlpacaBarsQ } from '@/src/mw/validate';
-import { cacheGet, cacheSet } from '@/src/lib/cache/redis';
+import { AlpacaBarsQ } from '@/mw/validate';
+import { cacheGet, cacheSet } from '@/lib/cache/redis';
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || '';
 

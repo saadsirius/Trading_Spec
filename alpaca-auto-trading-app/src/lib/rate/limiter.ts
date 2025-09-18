@@ -1,4 +1,4 @@
-import { redis } from '@/src/lib/cache/redis';
+import { redis } from '@/lib/cache/redis';
 
 const WINDOW = 10_000; // 10s
 

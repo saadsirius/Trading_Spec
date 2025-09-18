@@ -1,4 +1,4 @@
-import { verifyHmac } from '@/src/mw/validate';
+import { verifyHmac } from '@/mw/validate';
 
 export async function POST(req: Request) {
   const raw = await req.text();

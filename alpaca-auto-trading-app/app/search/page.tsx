@@ -1,10 +1,10 @@
 'use client';
 import { useMemo, useState } from 'react';
-import SearchBar from '@/src/components/search/SearchBar';
-import TickerCard from '@/src/components/search/TickerCard';
-import SearchHistory from '@/src/components/search/SearchHistory';
-import SearchFilters from '@/src/components/search/SearchFilters';
-import SearchResultsSummary from '@/src/components/search/SearchResultsSummary';
+import SearchBar from '@/components/search/SearchBar';
+import TickerCard from '@/components/search/TickerCard';
+import SearchHistory from '@/components/search/SearchHistory';
+import SearchFilters from '@/components/search/SearchFilters';
+import SearchResultsSummary from '@/components/search/SearchResultsSummary';
 import { useRouter } from 'next/navigation';
 
 export default function SearchPage() {
