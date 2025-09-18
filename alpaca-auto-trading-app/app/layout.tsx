@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import Navigation from '@/components/Navigation';
+import Navbar from '@/components/Navbar';
+import CommandPalette from '@/components/CommandPalette';
+import ToastRail from '@/components/ToastRail';
 import Providers from '@/components/Providers';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Alpaca Trading Platform',
-  description: 'Professional trading platform with Alpaca integration',
+  title: 'Alpaca IQ',
+  description: 'TradingView-like + Alpaca execution',
 };
 
 export default function RootLayout({
@@ -17,15 +19,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="fr" suppressHydrationWarning>
+      <body className={`${inter.className} min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100`}>
         <Providers>
-          <div className="min-h-screen bg-gray-900">
-            <Navigation />
-            <main className="pt-16">
-              {children}
-            </main>
-          </div>
+          <Navbar />
+          <CommandPalette />
+          <main className="min-h-[calc(100vh-56px)]">{children}</main>
+          <ToastRail />
         </Providers>
       </body>
     </html>

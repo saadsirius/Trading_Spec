@@ -103,3 +103,19 @@ model EconEvent {
   
   @@index([date])
 }
+
+model ai_suggestions_daily {
+  id           String   @id @default(cuid())
+  day          DateTime // date "jour" (00:00 UTC)
+  symbol       String
+  score        Float
+  rsi          Float?
+  momentum     Float?
+  breakout     Boolean?
+  weightsJson  Json     // { wDonchian, wMomentum, wRSI, buyThreshold, universeSize, ... }
+  paramsHash   String   // hash des poids + seuils + backtest params
+  createdAt    DateTime @default(now())
+
+  @@index([day, score])
+  @@index([day, symbol])
+}

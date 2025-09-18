@@ -14,6 +14,7 @@ export const AlpacaEndpoints = {
   orders: `${TRADING_BASE}/orders`,
   positions: `${TRADING_BASE}/positions`,
   account: `${TRADING_BASE}/account`,
+  assets: `${TRADING_BASE}/assets`,
   bars: `${MARKET_BASE}/v2/stocks/bars`,
   quotes: `${MARKET_BASE}/v2/stocks/quotes`,
   trades: `${MARKET_BASE}/v2/stocks/trades`,

@@ -1,176 +1,58 @@
 'use client';
+import { useEffect, useRef } from 'react';
+import { createChart, ISeriesApi } from 'lightweight-charts';
+import { useUI } from '@/state/uiStore';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
-import { chartInteractionRateLimit, timeframeChangeRateLimit, getRateLimitKey } from '@/lib/rateLimit';
-import { trackChartInteraction } from '@/lib/analytics/Analytics';
-import type { Bar } from '@/types';
+export default function ChartPanel({ symbol }: { symbol: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const priceRef = useRef<ISeriesApi<'Candlestick'>>();
+  const donHighRef = useRef<ISeriesApi<'Line'>>();
+  const donLowRef = useRef<ISeriesApi<'Line'>>();
+  const { timeframe, donchian20 } = useUI();
 
-interface ChartPanelProps {
-  symbol: string;
-  timeframe?: string;
-  height?: number;
-  className?: string;
-}
+  useEffect(() => {
+    if (!ref.current) return;
+    const chart = createChart(ref.current, { height: 520, timeScale: { rightBarStaysOnScroll: true } });
+    const series = chart.addCandlestickSeries();
+    priceRef.current = series;
+    const high = chart.addLineSeries({ lineWidth: 1 });
+    const low  = chart.addLineSeries({ lineWidth: 1 });
+    donHighRef.current = high; donLowRef.current = low;
 
-export function ChartPanel({ 
-  symbol, 
-  timeframe = '1Day', 
-  height = 400, 
-  className = '' 
-}: ChartPanelProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const [bars, setBars] = useState<Bar[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch bars data
-  const fetchBars = useCallback(async (symbol: string, timeframe: string) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params = new URLSearchParams({
-        symbols: symbol,
-        timeframe,
-        limit: '100',
-        feed: 'iex',
-      });
-
-      const response = await fetch(`/api/alpaca/market/bars?${params.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch bars data');
-      }
-
-      const data = await response.json();
-      const symbolBars = data[symbol] || [];
-      
-      // Transform to lightweight-charts format
-      const transformedBars = symbolBars.map((bar: any) => ({
-        time: Math.floor(new Date(bar.t).getTime() / 1000),
-        open: bar.o,
-        high: bar.h,
-        low: bar.l,
-        close: bar.c,
-      }));
-
-      setBars(transformedBars);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setError(message);
-      console.error('Error fetching bars:', err);
-    } finally {
-      setLoading(false);
-    }
+    let lastMove = 0;
+    chart.subscribeCrosshairMove(() => { const now = Date.now(); if (now - lastMove < 100) return; lastMove = now; });
+    const onResize = () => chart.applyOptions({});
+    window.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); chart.remove(); };
   }, []);
 
-  // Initialize chart
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e1e1e' },
-        textColor: '#d1d4dc',
-      },
-      width: chartContainerRef.current.clientWidth,
-      height: height,
-      grid: {
-        vertLines: { color: '#2B2B43' },
-        horzLines: { color: '#2B2B43' },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: '#485c7b',
-      },
-      timeScale: {
-        borderColor: '#485c7b',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-    });
-
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-
-    chartRef.current = chart;
-    seriesRef.current = candlestickSeries;
-
-    // Handle crosshair movement with rate limiting
-    chart.subscribeCrosshairMove((param) => {
-      const rateLimitKey = getRateLimitKey('chart', 'crosshair');
-      if (chartInteractionRateLimit.isAllowed(rateLimitKey)) {
-        trackChartInteraction('crosshair');
+  async function load() {
+    if (!symbol || !priceRef.current) return;
+    const url = `/api/alpaca/market/bars?symbols=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=500`;
+    const res = await fetch(url);
+    const json = await res.json();
+    const bars = json?.bars?.[symbol] ?? [];
+    const data = bars.map((b: any) => ({ time: Math.floor(new Date(b.t).getTime()/1000), open:b.o, high:b.h, low:b.l, close:b.c }));
+    priceRef.current!.setData(data);
+    // Donchian 20 (client-side)
+    if (donHighRef.current && donLowRef.current) {
+      if (!donchian20) { donHighRef.current.setData([]); donLowRef.current.setData([]); return; }
+      const highs: number[] = []; const lows: number[] = [];
+      const outH: any[] = []; const outL: any[] = [];
+      for (let i=0;i<data.length;i++){
+        highs.push(data[i].high); lows.push(data[i].low);
+        const start = Math.max(0, i-19);
+        const h = Math.max(...highs.slice(start, i+1));
+        const l = Math.min(...lows.slice(start, i+1));
+        outH.push({ time: data[i].time, value: h });
+        outL.push({ time: data[i].time, value: l });
       }
-    });
-
-    // Handle resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-      }
-    };
-  }, [height]);
-
-  // Update series data
-  useEffect(() => {
-    if (seriesRef.current && bars.length > 0) {
-      seriesRef.current.setData(bars);
+      donHighRef.current.setData(outH);
+      donLowRef.current.setData(outL);
     }
-  }, [bars]);
-
-  // Fetch data when symbol or timeframe changes
-  useEffect(() => {
-    const rateLimitKey = getRateLimitKey('chart', 'timeframe');
-    if (timeframeChangeRateLimit.isAllowed(rateLimitKey)) {
-      trackChartInteraction('timeframe_change');
-      fetchBars(symbol, timeframe);
-    }
-  }, [symbol, timeframe, fetchBars]);
-
-  if (loading) {
-    return (
-      <div className={`flex items-center justify-center ${className}`} style={{ height }}>
-        <div className="text-white">Loading chart...</div>
-      </div>
-    );
   }
 
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center ${className}`} style={{ height }}>
-        <div className="text-red-500">Error: {error}</div>
-      </div>
-    );
-  }
+  useEffect(() => { const t = setTimeout(load, 300); return ()=>clearTimeout(t); }, [symbol, timeframe, donchian20]);
 
-  return (
-    <div className={`relative ${className}`}>
-      <div className="absolute top-2 left-2 z-10 bg-gray-800 px-2 py-1 rounded text-white text-sm">
-        {symbol} - {timeframe}
-      </div>
-      <div ref={chartContainerRef} className="w-full" style={{ height }} />
-    </div>
-  );
+  return <div className="w-full h-full" ref={ref} />;
 }

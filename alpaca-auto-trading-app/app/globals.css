@@ -181,6 +181,12 @@ body {
   color: #f59e0b;
 }
 
+/* Focus visible for accessibility */
+:focus-visible { 
+  outline: 2px solid #3b82f6; 
+  outline-offset: 2px; 
+}
+
 /* Responsive utilities */
 @media (max-width: 640px) {
   .mobile-hidden {

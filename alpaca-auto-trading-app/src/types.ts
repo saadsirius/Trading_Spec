@@ -4,7 +4,8 @@ export type AnalyticsEvent =
   | { type: 'alert_fired'; symbol: string; score: number; rule: string }
   | { type: 'chart_interaction'; action: 'crosshair'|'timeframe_change' }
   | { type: 'search_select'; symbol: string }
-  | { type: 'alert_muted'; symbol: string; rule: string };
+  | { type: 'alert_muted'; symbol: string; rule: string }
+  | { type: 'nav_click'; href: string };
 
 export type AIAlert = {
   symbol: string;
