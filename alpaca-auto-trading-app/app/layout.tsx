@@ -4,7 +4,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import CommandPalette from '@/components/CommandPalette';
 import ToastRail from '@/components/ToastRail';
-import Providers from '@/components/Providers';
+import Providers from './providers';
 
 const inter = Inter({ subsets: ['latin'] });
 
