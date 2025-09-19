@@ -1,0 +1,15 @@
+---
+description: |
+  Always enforce the complete merged rules as described below.
+  The agent MUST re-read and dynamically apply every instruction from the latest .cursorrules after each update or commit.
+  Absolutely no merge, build, CI pipeline or code review may proceed if any rule is missing or violated (vision, sécurité, .env structure, API, UX, obs, coverages, tests, troubleshooting, merge, checklist CI, acceptance, etc).
+  Agent must emit explicit reasons for any refusal (never generic).
+  Priority: prod-grade sécurité, UX sous 2 clics, .env et observabilité strictes, explicabilité IA, coverage tests >90%, rollback immédiat en cas de régression, documentation claire. 
+  Apply/merge rules incrementally – never replace, always complete. 
+  All merges MUST be validated according to the strictest/most current version of this file!
+
+globs:
+  - '**/*'
+alwaysApply: true
+---
+
