@@ -41,6 +41,8 @@ export default function Navbar() {
         if (k === 'a') router.push('/alerts');      // Alerts
         if (k === 'm') router.push('/lab/middleware'); // Middleware
         if (k === 'f') router.push('/lab/performance'); // Performance
+        if (k === 'i') router.push('/lab/ai-systems'); // AI Systems
+        if (k === 'o') router.push('/lab/roi-overview'); // ROI Overview
         chord = '';
       }
     };
@@ -73,6 +75,8 @@ export default function Navbar() {
             <NavLink href="/history">Historique</NavLink>
             <NavLink href="/lab/middleware">Middleware</NavLink>
             <NavLink href="/lab/performance">Performance</NavLink>
+            <NavLink href="/lab/ai-systems">AI Systems</NavLink>
+            <NavLink href="/lab/roi-overview">ROI Overview</NavLink>
           </div>
 
           {/* Recherche rapide */}
