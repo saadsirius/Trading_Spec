@@ -1,40 +1,27 @@
-name: Build Documentation
-
+name: Build Docs
 on:
   push:
-    branches: [ main, master, develop ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch: {}
-
 jobs:
   build-docs:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Generate knowledge base
-        run: npm run doc:generate
-        
-      - name: Generate Cursor prompts
-        run: npm run doc:prompts
-        
-      - name: Generate embeddings
-        run: npm run doc:embed
-        
-      - name: Upload documentation artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/transformers
+            ~/.cache/huggingface
+          key: transformers-${{ runner.os }}-v1
+      - run: npm ci || npm i
+      - run: npm run doc:generate
+      - run: npm run doc:prompts
+      - run: npm run doc:embed
+      - uses: actions/upload-artifact@v4
         with:
           name: project-knowledge
           path: |
@@ -42,53 +29,3 @@ jobs:
             knowledge.md
             .cursor-prompts.md
             vector/knowledge_embeddings.json
-          retention-days: 30
-          
-      - name: Comment PR with documentation summary
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            let summary = '## 📚 Documentation Generated\n\n';
-            
-            try {
-              const knowledge = JSON.parse(fs.readFileSync('knowledge.json', 'utf8'));
-              summary += `- **Services**: ${knowledge.services.length}\n`;
-              summary += `- **Hooks**: ${knowledge.hooks.length}\n`;
-              summary += `- **Components**: ${knowledge.components.length}\n`;
-              summary += `- **Types**: ${knowledge.types.length}\n`;
-              summary += `- **Utils**: ${knowledge.utils.length}\n`;
-              summary += `- **API Endpoints**: ${knowledge.endpoints.length}\n\n`;
-              summary += 'Documentation artifacts are available in the workflow artifacts.';
-            } catch (error) {
-              summary += 'Failed to generate documentation summary.';
-            }
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary
-            });
-            
-  deploy-docs:
-    needs: build-docs
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Download documentation artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: project-knowledge
-          path: ./
-          
-      - name: Deploy to GitHub Pages (if configured)
-        if: false # Enable if you want to deploy docs to GitHub Pages
-        run: |
-          echo "GitHub Pages deployment would go here"
-          # Add your GitHub Pages deployment logic here

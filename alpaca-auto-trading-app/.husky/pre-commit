@@ -1,2 +1,4 @@
-#!/bin/sh
-npm run verify && git add knowledge.json knowledge.md .cursor-prompts.md vector/knowledge_embeddings.json
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+SKIP_EMBED=1 npm run verify && git add knowledge.json knowledge.md .cursor-prompts.md
