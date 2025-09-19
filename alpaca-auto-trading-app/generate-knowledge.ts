@@ -1,6 +1,6 @@
 import { Project } from "ts-morph";
-import { writeFileSync } from "fs-extra";
-import globby from "globby";
+import fs from "fs-extra";
+import { globby } from "globby";
 import chalk from "chalk";
 
 const project = new Project({ tsConfigFilePath: "./tsconfig.json" });
@@ -88,7 +88,7 @@ async function main() {
   data.endpoints.sort((a:any,b:any)=> (a.file||"").localeCompare(b.file||""));
   data.files.sort((a:any,b:any)=> (a.file||"").localeCompare(b.file||""));
 
-  writeFileSync("knowledge.json", JSON.stringify(data, null, 2));
+  fs.writeFileSync("knowledge.json", JSON.stringify(data, null, 2));
 
   // Markdown compact et stable
   const md: string[] = [];
