@@ -1,0 +1,2 @@
+#!/bin/sh
+npm run verify && git add knowledge.json knowledge.md .cursor-prompts.md vector/knowledge_embeddings.json

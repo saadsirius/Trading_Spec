@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import { Toasts } from '@/lib/toast/ToastService';
 import { useUI } from '@/state/uiStore';
+import { onKey, combos } from '@/lib/shortcuts';
 
 interface NavLinkProps {
   href: string;

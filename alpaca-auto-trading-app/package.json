@@ -27,10 +27,17 @@
     "analyze:bundle": "npm run build && npx source-map-explorer 'build/static/js/*.js' --html > bundle-analysis.html",
     "optimize": "npm run prune && npm run build && npm run analyze:bundle",
     "prune": "npm prune && npm audit fix",
+    "doc:generate": "ts-node generate-knowledge.ts",
+    "doc:prompts": "ts-node scripts/generate-prompts.ts",
+    "doc:embed": "ts-node scripts/embed-knowledge.ts",
+    "doc:watch": "chokidar \"src/**/*.ts?(x)\" -c \"npm run doc:quick\"",
+    "verify": "tsc --noEmit && npm run doc:generate && npm run doc:prompts",
+    "prepare": "husky install",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "doc:quick": "ts-node generate-knowledge.ts && ts-node scripts/generate-prompts.ts"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^3.0.0",
@@ -112,6 +119,7 @@
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/fs-extra": "^11.0.4",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
     "@types/nodemailer": "^6.4.0",
@@ -147,6 +155,7 @@
     "tsx": "^4.6.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
+    "webpack-bundle-analyzer": "^4.10.2",
     "whatwg-fetch": "^3.6.20"
   },
   "prisma": {

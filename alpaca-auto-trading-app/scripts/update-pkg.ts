@@ -1,0 +1,13 @@
+import { readFileSync, writeFileSync } from "fs";
+const pkgPath = "package.json";
+const pkg = JSON.parse(readFileSync(pkgPath,"utf8"));
+pkg.scripts ||= {};
+pkg.scripts["doc:generate"] = "ts-node generate-knowledge.ts";
+pkg.scripts["doc:prompts"]  = "ts-node scripts/generate-prompts.ts";
+pkg.scripts["doc:embed"]    = "ts-node scripts/embed-knowledge.ts";
+pkg.scripts["doc:quick"]    = "ts-node generate-knowledge.ts && ts-node scripts/generate-prompts.ts";
+pkg.scripts["verify"]       = "tsc --noEmit && npm run doc:generate && npm run doc:prompts";
+pkg.scripts["doc:watch"]    = "chokidar \"src/**/*.ts?(x)\" -c \"npm run doc:quick\"";
+pkg.scripts["prepare"]      = "husky install";
+writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+console.log("✅ package.json scripts updated");

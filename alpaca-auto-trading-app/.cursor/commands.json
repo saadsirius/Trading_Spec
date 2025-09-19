@@ -1,0 +1,40 @@
+{
+    "onSave": [
+        {
+            "pattern": "src/**/*.{ts,tsx}",
+            "run": "npm run doc:generate && npm run doc:prompts && npm run doc:embed"
+        },
+        {
+            "pattern": "app/**/*.{ts,tsx}",
+            "run": "npm run doc:generate && npm run doc:prompts && npm run doc:embed"
+        }
+    ],
+    "onFileChange": [
+        {
+            "pattern": "src/**/*.{ts,tsx}",
+            "run": "npm run doc:generate"
+        }
+    ],
+    "customCommands": [
+        {
+            "name": "Generate Documentation",
+            "command": "npm run doc:generate && npm run doc:prompts && npm run doc:embed",
+            "description": "Generate complete documentation and prompts"
+        },
+        {
+            "name": "Run Tests",
+            "command": "npm run test",
+            "description": "Run all tests"
+        },
+        {
+            "name": "Performance Check",
+            "command": "npm run performance",
+            "description": "Run performance analysis"
+        },
+        {
+            "name": "Deploy to Vercel",
+            "command": "npm run deploy:vercel",
+            "description": "Deploy to Vercel production"
+        }
+    ]
+}
