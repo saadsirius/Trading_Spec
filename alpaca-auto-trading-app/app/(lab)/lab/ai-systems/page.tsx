@@ -1,12 +1,204 @@
 'use client';
-import { useState, useEffect } from 'react';
-import useSWR from 'swr';
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useSWR, { mutate } from 'swr';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Types (adjust to your API shape if needed)
+// ──────────────────────────────────────────────────────────────────────────────
+
+type AgentPerf = { accuracy: number; profit: number; trades: number };
+type Agent = { id: string; name: string; type: string; status: 'active' | 'stopped'; performance: AgentPerf };
+
+type AgentsResp = { agents: Agent[] };
+
+type MetaPerf = {
+  baseAccuracy: number;
+  adaptedAccuracy: number;
+  adaptationTime: number;
+  memoryUsage: number;
+};
+type MetaModel = {
+  id: string;
+  name: string;
+  status: 'active' | 'training' | 'idle';
+  performance: MetaPerf;
+  tasks?: { symbol?: string; regime?: string; adaptationScore: number }[];
+};
+type MetaResp = { models: MetaModel[] };
+
+type GAStats = { totalGenerations: number; convergenceRate: number; diversity: number; stagnationCount: number };
+type Genome = { id: string; fitness: number };
+type GAResults = {
+  currentGeneration: number;
+  bestFitness: number;
+  averageFitness: number;
+  population?: Genome[];
+  statistics: GAStats;
+};
+type GAResp = { results: GAResults };
+
+type HybridPerf = {
+  overallAccuracy: number;
+  profit: number;
+  sharpe: number;
+  winRate: number;
+};
+type HybridComponents = {
+  neural: { type: string; accuracy: number };
+  rules: { type: string; accuracy: number };
+  ensemble: { method: string; accuracy: number };
+};
+type HybridModel = {
+  id: string;
+  name: string;
+  status: 'active' | 'training' | 'idle';
+  performance: HybridPerf;
+  components: HybridComponents;
+};
+type HybridResp = { models: HybridModel[] };
+
+type MonitoringResp = {
+  data: {
+    system: { status: 'healthy' | 'degraded' | 'down'; uptime: string; responseTime: number; errorRate: number };
+    models: { total: number; active: number; training: number; accuracy: { average: number } };
+    agents: Record<string, { active: number; accuracy: number }>;
+    alerts: { id: string; severity: 'info' | 'warning' | 'error'; timestamp: string | number; message: string }[];
+  };
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+/** Resilient fetcher: timeout + JSON guard + HTTP error surfacing */
+const fetcher: <T>(url: string) => Promise<T> = async (url) => {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    const txt = await r.text();
+    try {
+      return JSON.parse(txt) as any;
+    } catch {
+      throw new Error(`Invalid JSON from ${url}`);
+    }
+  } finally {
+    clearTimeout(t);
+  }
+};
+
+// Small UI helpers
+function StatusPill({ value }: { value: string }) {
+  const cls =
+    value === 'active'
+      ? 'bg-emerald-900 text-emerald-300'
+      : value === 'training'
+      ? 'bg-yellow-900 text-yellow-300'
+      : value === 'healthy'
+      ? 'bg-emerald-900 text-emerald-300'
+      : value === 'error'
+      ? 'bg-red-900 text-red-300'
+      : 'bg-gray-900 text-gray-300';
+  return <span className={`px-2 py-1 rounded text-xs capitalize ${cls}`}>{value}</span>;
+}
+
+function Skeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="ds-card p-4 animate-pulse">
+          <div className="h-4 w-1/2 bg-gray-700 rounded mb-4" />
+          <div className="space-y-2">
+            <div className="h-3 w-full bg-gray-700 rounded" />
+            <div className="h-3 w-2/3 bg-gray-700 rounded" />
+            <div className="h-3 w-1/3 bg-gray-700 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type TabId = 'agents' | 'meta' | 'genetic' | 'hybrid' | 'monitoring';
+type TabDef = { id: TabId; label: string; count: number };
+
+function Tabs({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: TabDef[];
+  active: TabId;
+  onChange: (id: TabId) => void;
+}) {
+  return (
+    <div role="tablist" aria-label="AI sections" className="flex space-x-1 bg-gray-800 p-1 rounded-lg">
+      {tabs.map((tab, i) => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`panel-${tab.id}`}
+            id={`tab-${tab.id}`}
+            onClick={() => onChange(tab.id)}
+            className={`flex-1 px-4 py-2 text-sm rounded-md transition-colors ${
+              isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+            title={`⌨︎ ${i + 1}`}
+          >
+            {tab.label}
+            {tab.count > 0 && <span className="ml-2 px-2 py-0.5 bg-gray-600 text-xs rounded-full">{tab.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 export default function AISystemsLab() {
-  const [activeTab, setActiveTab] = useState('agents');
+  // ---------------- URL + storage sync ----------------
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  // lecture initiale: ?tab=…, sinon localStorage, sinon 'agents'
+  const initialTab = (() => {
+    const q = (sp.get('tab') as TabId | null) ?? null;
+    if (q && ['agents', 'meta', 'genetic', 'hybrid', 'monitoring'].includes(q)) return q as TabId;
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('aisys:lastTab') as TabId | null;
+      if (saved) return saved;
+    }
+    return 'agents' as TabId;
+  })();
+
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
+  // push URL quand l'onglet change + persistance
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', activeTab);
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
+    window.localStorage.setItem('aisys:lastTab', activeTab);
+  }, [activeTab, router]);
+
+  // raccourcis clavier 1..5
+  useEffect(() => {
+    const ids: TabId[] = ['agents', 'meta', 'genetic', 'hybrid', 'monitoring'];
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= 5) {
+        setActiveTab(ids[n - 1]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const { data: agents } = useSWR('/api/ai/agents', fetcher);
   const { data: metaModels } = useSWR('/api/ai/meta-learning', fetcher);

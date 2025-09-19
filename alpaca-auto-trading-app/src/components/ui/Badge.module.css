@@ -1,0 +1,11 @@
+/**
+ * File: src/components/ui/Badge.module.css
+ * Description: Small, semantic badge built with tokens.
+ */
+.badge {
+  @apply inline-flex items-center rounded-full px-2 py-[2px] text-xs font-semibold;
+}
+.badge[data-variant="neutral"] { @apply bg-ds-text/10 text-ds-text/80; }
+.badge[data-variant="success"] { @apply bg-ds-success/15 text-ds-success; }
+.badge[data-variant="warning"] { @apply bg-ds-warning/15 text-ds-warning; }
+.badge[data-variant="danger"]  { @apply bg-ds-danger/15  text-ds-danger; }

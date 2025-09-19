@@ -1,0 +1,50 @@
+# Projet: Alpaca Auto Trading App — Instruction Set pour Cursor
+# Objectif: Reproduire les fonctionnalités essentielles de Trading212/TradingView pour usage personnel,
+# avec backtesting ultérieur, screener, charts type TradingView, sentiment analysis, calendrier, "pentagone" (radar) par indice,
+# et un workflow robuste: typage strict, erreurs gérées, tests, traçabilité, accessibilité.
+
+## Périmètre immédiat (MUST)
+- Pages prêtes à l'emploi: /portfolio et /history.
+- Charts: utiliser `lightweight-charts` (TradingView-like). Aucune magie opaque: code lisible, thèmes clair/sombre, synchronisation crosshair/tooltip.
+- DataTable: `@tanstack/react-table` pour de grosses listes (positions, transactions) avec pagination, tri, filtres, export CSV.
+- État: `zustand` pour un state global léger (positions, watchlist, filtres).
+- Erreurs:
+  - Validation d'entrées: `zod`
+  - Couche fetch typée avec interception d'erreurs et retrying exponentiel (limité).
+  - `ErrorBoundary` + toasts non-bloquants.
+- Accessibilité: composants actionnables au clavier, aria-* sur toasts/table/onglets, `data-testid` stables pour les tests.
+- Observabilité: points de trace (console.warn/info), compteur d'actions utilisateur minimal.
+- Tests: Vitest + React Testing Library (au moins 2 tests smoke: Portfolio et Historique).
+- IA & Sentiment: fournir des stubs clairs (fonctions/clients), pas de promesses vides; interfaces bien typées pour brancher des providers (news, LLM, events) plus tard.
+- Calendrier marché/événements: stub typé (prochaines annonces, dividendes, earnings).
+
+## Non-ambiguïtés — CHARTS & ALARMES IA
+- Charts:
+  - `lightweight-charts` uniquement pour les prix; une ligne P&L sur Y2 optionnelle via série de type baseline.
+  - Timezone: UTC interne, affichage local côté client (Intl).
+  - Formats: prix (2-4 décimales selon symbole), pourcentages avec signe, unités cohérentes.
+  - Pas d'effets flous; grid, crosshair, scale/scroll activés, style minimal élégant.
+- Alertes IA:
+  - Jamais d'alerte "magique": expliquer la règle (ex: "RSI < 30 ET volume > 20j MA").
+  - Toujours inclure:
+    - règle lisible
+    - score de confiance [0..1]
+    - fenêtre d'observation (ex: 15m / 1h / 1d)
+    - lien "voir la preuve" (renvoie vers la section du chart/transactions concernée)
+  - Les messages IA sont des suggestions, pas des ordres.
+
+## Bonnes pratiques de code
+- TypeScript strict, no any implicite.
+- Zod pour tout payload entrant/sortant (API et UI).
+- Composants petits, testables, documentés en-tête.
+- Aucune logique réseau dans les composants UI.
+- Préférer composition à héritage; hooks spécialisés pour effets et stores.
+
+## Ce que Cursor doit faire par défaut
+- Respecter les types et schémas fournis.
+- Générer du code minimal, clair et commenté.
+- Suggérer des tests quand un composant dépasse 50 lignes.
+- Quand "historique / portfolio" est mentionné, utiliser les composants existants,
+  ne jamais réinventer: ChartWrapper, DataTable, ErrorBoundary, StatusPill, NewsTicker, AIInsights.
+
+# Fin .cursorrules
