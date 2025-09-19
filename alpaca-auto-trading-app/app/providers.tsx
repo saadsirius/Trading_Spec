@@ -1,6 +1,8 @@
 'use client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { PropsWithChildren, useEffect } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { CssBaseline } from '@mui/material';
 import { webVitals } from '@/lib/performance/web-vitals';
 import { prefetchManager } from '@/lib/performance/prefetch';
 
@@ -81,17 +83,59 @@ function PerformanceMonitor() {
   return null;
 }
 
+// Material-UI Dark Theme
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#3B82F6',
+    },
+    secondary: {
+      main: '#8B5CF6',
+    },
+    background: {
+      default: '#111827',
+      paper: '#1F2937',
+    },
+  },
+  typography: {
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: 'none',
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          backgroundImage: 'none',
+        },
+      },
+    },
+  },
+});
+
 export default function Providers({ children }: PropsWithChildren) {
   const { mood } = useMoodController();
   
   return (
     <QueryClientProvider client={queryClient}>
-      <ErrorBoundary>
-        <PerformanceMonitor />
-        <div data-mood={mood} className="min-h-screen">
-          {children}
-        </div>
-      </ErrorBoundary>
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <ErrorBoundary>
+          <PerformanceMonitor />
+          <div data-mood={mood} className="min-h-screen">
+            {children}
+          </div>
+        </ErrorBoundary>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

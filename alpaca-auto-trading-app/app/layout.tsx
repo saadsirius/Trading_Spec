@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import Navbar from '@/components/Navbar';
+import AnimatedNavbar from '@/components/AnimatedNavbar';
 import CommandPalette from '@/components/CommandPalette';
 import ToastRail from '@/components/ToastRail';
 import Providers from './providers';
@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.className} min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100`}>
         <Providers>
-          <Navbar />
+          <AnimatedNavbar />
           <CommandPalette />
           <main className="min-h-[calc(100vh-56px)]">{children}</main>
           <ToastRail />
