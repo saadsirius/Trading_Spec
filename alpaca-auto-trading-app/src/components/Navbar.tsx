@@ -40,6 +40,7 @@ export default function Navbar() {
         if (k === 'p') router.push('/portfolio');   // Portfolio
         if (k === 'a') router.push('/alerts');      // Alerts
         if (k === 'm') router.push('/lab/middleware'); // Middleware
+        if (k === 'f') router.push('/lab/performance'); // Performance
         chord = '';
       }
     };
@@ -71,6 +72,7 @@ export default function Navbar() {
             <NavLink href="/alerts/personal">Mes Alertes</NavLink>
             <NavLink href="/history">Historique</NavLink>
             <NavLink href="/lab/middleware">Middleware</NavLink>
+            <NavLink href="/lab/performance">Performance</NavLink>
           </div>
 
           {/* Recherche rapide */}

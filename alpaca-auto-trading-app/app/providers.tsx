@@ -1,6 +1,8 @@
 'use client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { PropsWithChildren, useEffect } from 'react';
+import { webVitals } from '@/lib/performance/web-vitals';
+import { prefetchManager } from '@/lib/performance/prefetch';
 
 const queryClient = new QueryClient({
   defaultOptions: { 
@@ -36,10 +38,60 @@ function ErrorCatcher({ children, onError }: PropsWithChildren & { onError: (e: 
   return <>{children}</>;
 }
 
+// Mood Controller Hook
+function useMoodController() {
+  const [mood, setMood] = React.useState<'happy' | 'neutral' | 'stressed' | 'excited'>('neutral');
+  
+  useEffect(() => {
+    // Simple mood detection based on time and user activity
+    const hour = new Date().getHours();
+    if (hour >= 9 && hour <= 16) {
+      setMood('excited'); // Market hours
+    } else if (hour >= 6 && hour <= 8) {
+      setMood('happy'); // Morning
+    } else if (hour >= 17 && hour <= 20) {
+      setMood('neutral'); // Evening
+    } else {
+      setMood('stressed'); // Late night/early morning
+    }
+  }, []);
+
+  return { mood, setMood };
+}
+
+// Performance Monitor Component
+function PerformanceMonitor() {
+  useEffect(() => {
+    // Initialize Web Vitals monitoring
+    webVitals.start();
+    
+    // Initialize prefetch manager
+    prefetchManager.observeElement('[data-prefetch]', (element) => {
+      const url = element.getAttribute('data-prefetch');
+      if (url) {
+        prefetchManager.prefetch(url);
+      }
+    });
+
+    return () => {
+      webVitals.stop();
+    };
+  }, []);
+
+  return null;
+}
+
 export default function Providers({ children }: PropsWithChildren) {
+  const { mood } = useMoodController();
+  
   return (
     <QueryClientProvider client={queryClient}>
-      <ErrorBoundary>{children}</ErrorBoundary>
+      <ErrorBoundary>
+        <PerformanceMonitor />
+        <div data-mood={mood} className="min-h-screen">
+          {children}
+        </div>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

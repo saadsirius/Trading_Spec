@@ -21,31 +21,23 @@ const config: Config = {
     {
       displayName: 'unit',
       ...base,
-      testMatch: ['<rootDir>/**/__tests__/**/*.unit.(spec|test).{ts,tsx}'],
-      coverageThreshold: { 
-        global: { 
-          lines: 85, 
-          statements: 85, 
-          functions: 85, 
-          branches: 75 
-        } 
-      }
+      testMatch: ['<rootDir>/**/__tests__/**/*.unit.(spec|test).{ts,tsx}']
     },
     {
       displayName: 'integration',
       ...base,
       setupFilesAfterEnv: ['<rootDir>/jest.setup.ts', '<rootDir>/src/test/msw/setup.ts'],
-      testMatch: ['<rootDir>/**/__tests__/**/*.int.(spec|test).{ts,tsx}'],
-      coverageThreshold: { 
-        global: { 
-          lines: 75, 
-          statements: 75, 
-          functions: 70, 
-          branches: 65 
-        } 
-      }
+      testMatch: ['<rootDir>/**/__tests__/**/*.int.(spec|test).{ts,tsx}']
     }
   ],
+  coverageThreshold: { 
+    global: { 
+      lines: 80, 
+      statements: 80, 
+      functions: 80, 
+      branches: 70 
+    } 
+  }
 };
 
 export default config;
