@@ -1,300 +1,218 @@
-import { renderHook, act } from '@testing-library/react';
+/**
+ * File: src/state/__tests__/uiStore.test.ts
+ * Description: Tests for UI store functionality.
+ */
 import { useUIStore } from '../uiStore';
 
 describe('useUIStore', () => {
   beforeEach(() => {
     // Reset store state before each test
     useUIStore.setState({
-      isNavbarVisible: true,
-      isNavbarSticky: false,
-      isMobileMenuOpen: false,
-      isDarkMode: false,
-      sidebarCollapsed: false,
+      theme: 'dark',
+      sidebarOpen: false,
+      modals: {},
+      loading: {},
       notifications: [],
-      loading: false,
-      error: null,
+      searchQuery: '',
+      filters: {},
     });
   });
 
-  describe('navbar state', () => {
-    it('should toggle navbar visibility', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.isNavbarVisible).toBe(true);
-      
-      act(() => {
-        result.current.toggleNavbar();
-      });
-      
-      expect(result.current.isNavbarVisible).toBe(false);
+  describe('theme management', () => {
+    it('should have dark theme by default', () => {
+      const state = useUIStore.getState();
+      expect(state.theme).toBe('dark');
     });
 
-    it('should set navbar sticky state', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.isNavbarSticky).toBe(false);
-      
-      act(() => {
-        result.current.setNavbarSticky(true);
-      });
-      
-      expect(result.current.isNavbarSticky).toBe(true);
+    it('should set theme to light', () => {
+      useUIStore.getState().setTheme('light');
+      const state = useUIStore.getState();
+      expect(state.theme).toBe('light');
+    });
+
+    it('should set theme to dark', () => {
+      useUIStore.getState().setTheme('dark');
+      const state = useUIStore.getState();
+      expect(state.theme).toBe('dark');
     });
   });
 
-  describe('mobile menu state', () => {
-    it('should toggle mobile menu', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.isMobileMenuOpen).toBe(false);
-      
-      act(() => {
-        result.current.toggleMobileMenu();
-      });
-      
-      expect(result.current.isMobileMenuOpen).toBe(true);
+  describe('sidebar management', () => {
+    it('should have sidebar closed by default', () => {
+      const state = useUIStore.getState();
+      expect(state.sidebarOpen).toBe(false);
     });
 
-    it('should close mobile menu', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      // First open the menu
-      act(() => {
-        result.current.toggleMobileMenu();
-      });
-      
-      expect(result.current.isMobileMenuOpen).toBe(true);
-      
-      // Then close it
-      act(() => {
-        result.current.closeMobileMenu();
-      });
-      
-      expect(result.current.isMobileMenuOpen).toBe(false);
+    it('should open sidebar', () => {
+      useUIStore.getState().setSidebarOpen(true);
+      const state = useUIStore.getState();
+      expect(state.sidebarOpen).toBe(true);
+    });
+
+    it('should close sidebar', () => {
+      useUIStore.getState().setSidebarOpen(false);
+      const state = useUIStore.getState();
+      expect(state.sidebarOpen).toBe(false);
     });
   });
 
-  describe('theme state', () => {
-    it('should toggle dark mode', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.isDarkMode).toBe(false);
-      
-      act(() => {
-        result.current.toggleDarkMode();
-      });
-      
-      expect(result.current.isDarkMode).toBe(true);
+  describe('modal management', () => {
+    it('should have empty modals by default', () => {
+      const state = useUIStore.getState();
+      expect(state.modals).toEqual({});
     });
 
-    it('should set dark mode', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      act(() => {
-        result.current.setDarkMode(true);
-      });
-      
-      expect(result.current.isDarkMode).toBe(true);
-    });
-  });
-
-  describe('sidebar state', () => {
-    it('should toggle sidebar', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.sidebarCollapsed).toBe(false);
-      
-      act(() => {
-        result.current.toggleSidebar();
-      });
-      
-      expect(result.current.sidebarCollapsed).toBe(true);
+    it('should open a modal', () => {
+      useUIStore.getState().openModal('test-modal');
+      const state = useUIStore.getState();
+      expect(state.modals['test-modal']).toBe(true);
     });
 
-    it('should set sidebar collapsed state', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      act(() => {
-        result.current.setSidebarCollapsed(true);
-      });
-      
-      expect(result.current.sidebarCollapsed).toBe(true);
+    it('should close a modal', () => {
+      useUIStore.getState().openModal('test-modal');
+      useUIStore.getState().closeModal('test-modal');
+      const state = useUIStore.getState();
+      expect(state.modals['test-modal']).toBe(false);
+    });
+
+    it('should handle multiple modals', () => {
+      useUIStore.getState().openModal('modal1');
+      useUIStore.getState().openModal('modal2');
+      const state = useUIStore.getState();
+      expect(state.modals['modal1']).toBe(true);
+      expect(state.modals['modal2']).toBe(true);
     });
   });
 
-  describe('notifications', () => {
-    it('should add notification', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      const notification = {
-        id: '1',
-        type: 'success' as const,
-        message: 'Test notification',
-        timestamp: Date.now(),
-      };
-      
-      act(() => {
-        result.current.addNotification(notification);
-      });
-      
-      expect(result.current.notifications).toHaveLength(1);
-      expect(result.current.notifications[0]).toEqual(notification);
+  describe('loading state management', () => {
+    it('should have empty loading states by default', () => {
+      const state = useUIStore.getState();
+      expect(state.loading).toEqual({});
     });
 
-    it('should remove notification', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      const notification = {
-        id: '1',
-        type: 'success' as const,
-        message: 'Test notification',
-        timestamp: Date.now(),
-      };
-      
-      // Add notification first
-      act(() => {
-        result.current.addNotification(notification);
-      });
-      
-      expect(result.current.notifications).toHaveLength(1);
-      
-      // Then remove it
-      act(() => {
-        result.current.removeNotification('1');
-      });
-      
-      expect(result.current.notifications).toHaveLength(0);
-    });
-
-    it('should clear all notifications', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      const notifications = [
-        {
-          id: '1',
-          type: 'success' as const,
-          message: 'Test notification 1',
-          timestamp: Date.now(),
-        },
-        {
-          id: '2',
-          type: 'error' as const,
-          message: 'Test notification 2',
-          timestamp: Date.now(),
-        },
-      ];
-      
-      // Add notifications
-      act(() => {
-        notifications.forEach(notification => {
-          result.current.addNotification(notification);
-        });
-      });
-      
-      expect(result.current.notifications).toHaveLength(2);
-      
-      // Clear all
-      act(() => {
-        result.current.clearNotifications();
-      });
-      
-      expect(result.current.notifications).toHaveLength(0);
-    });
-  });
-
-  describe('loading state', () => {
     it('should set loading state', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.loading).toBe(false);
-      
-      act(() => {
-        result.current.setLoading(true);
-      });
-      
-      expect(result.current.loading).toBe(true);
+      useUIStore.getState().setLoading('test-key', true);
+      const state = useUIStore.getState();
+      expect(state.loading['test-key']).toBe(true);
+    });
+
+    it('should unset loading state', () => {
+      useUIStore.getState().setLoading('test-key', true);
+      useUIStore.getState().setLoading('test-key', false);
+      const state = useUIStore.getState();
+      expect(state.loading['test-key']).toBe(false);
+    });
+
+    it('should handle multiple loading states', () => {
+      useUIStore.getState().setLoading('key1', true);
+      useUIStore.getState().setLoading('key2', false);
+      const state = useUIStore.getState();
+      expect(state.loading['key1']).toBe(true);
+      expect(state.loading['key2']).toBe(false);
     });
   });
 
-  describe('error state', () => {
-    it('should set error', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      expect(result.current.error).toBe(null);
-      
-      const error = new Error('Test error');
-      
-      act(() => {
-        result.current.setError(error);
-      });
-      
-      expect(result.current.error).toBe(error);
+  describe('notification management', () => {
+    it('should have empty notifications by default', () => {
+      const state = useUIStore.getState();
+      expect(state.notifications).toEqual([]);
     });
 
-    it('should clear error', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      const error = new Error('Test error');
-      
-      // Set error first
-      act(() => {
-        result.current.setError(error);
+    it('should add a notification', () => {
+      useUIStore.getState().addNotification({
+        type: 'success',
+        message: 'Test notification',
       });
-      
-      expect(result.current.error).toBe(error);
-      
-      // Then clear it
-      act(() => {
-        result.current.clearError();
+      const state = useUIStore.getState();
+      expect(state.notifications).toHaveLength(1);
+      expect(state.notifications[0].type).toBe('success');
+      expect(state.notifications[0].message).toBe('Test notification');
+      expect(state.notifications[0].id).toBeDefined();
+      expect(state.notifications[0].timestamp).toBeDefined();
+    });
+
+    it('should remove a notification', () => {
+      useUIStore.getState().addNotification({
+        type: 'success',
+        message: 'Test notification',
       });
+      const state = useUIStore.getState();
+      const notificationId = state.notifications[0].id;
       
-      expect(result.current.error).toBe(null);
+      useUIStore.getState().removeNotification(notificationId);
+      const newState = useUIStore.getState();
+      expect(newState.notifications).toHaveLength(0);
+    });
+
+    it('should handle multiple notifications', () => {
+      useUIStore.getState().addNotification({
+        type: 'success',
+        message: 'Success notification',
+      });
+      useUIStore.getState().addNotification({
+        type: 'error',
+        message: 'Error notification',
+      });
+      const state = useUIStore.getState();
+      expect(state.notifications).toHaveLength(2);
+      expect(state.notifications[0].type).toBe('success');
+      expect(state.notifications[1].type).toBe('error');
     });
   });
 
-  describe('combined actions', () => {
-    it('should handle multiple state changes', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      act(() => {
-        result.current.toggleNavbar();
-        result.current.toggleDarkMode();
-        result.current.setLoading(true);
-      });
-      
-      expect(result.current.isNavbarVisible).toBe(false);
-      expect(result.current.isDarkMode).toBe(true);
-      expect(result.current.loading).toBe(true);
+  describe('search management', () => {
+    it('should have empty search query by default', () => {
+      const state = useUIStore.getState();
+      expect(state.searchQuery).toBe('');
     });
 
-    it('should maintain state consistency', () => {
-      const { result } = renderHook(() => useUIStore());
-      
-      // Set initial state
-      act(() => {
-        result.current.setNavbarSticky(true);
-        result.current.setDarkMode(true);
-        result.current.setSidebarCollapsed(true);
-      });
-      
-      // Verify state is maintained
-      expect(result.current.isNavbarSticky).toBe(true);
-      expect(result.current.isDarkMode).toBe(true);
-      expect(result.current.sidebarCollapsed).toBe(true);
-      
-      // Toggle some states
-      act(() => {
-        result.current.toggleNavbar();
-        result.current.toggleSidebar();
-      });
-      
-      // Verify toggles work correctly
-      expect(result.current.isNavbarVisible).toBe(false);
-      expect(result.current.sidebarCollapsed).toBe(false);
-      
-      // Verify other states remain unchanged
-      expect(result.current.isNavbarSticky).toBe(true);
-      expect(result.current.isDarkMode).toBe(true);
+    it('should set search query', () => {
+      useUIStore.getState().setSearchQuery('test query');
+      const state = useUIStore.getState();
+      expect(state.searchQuery).toBe('test query');
+    });
+
+    it('should update search query', () => {
+      useUIStore.getState().setSearchQuery('initial query');
+      useUIStore.getState().setSearchQuery('updated query');
+      const state = useUIStore.getState();
+      expect(state.searchQuery).toBe('updated query');
+    });
+  });
+
+  describe('filter management', () => {
+    it('should have empty filters by default', () => {
+      const state = useUIStore.getState();
+      expect(state.filters).toEqual({});
+    });
+
+    it('should set a filter', () => {
+      useUIStore.getState().setFilter('category', 'stocks');
+      const state = useUIStore.getState();
+      expect(state.filters['category']).toBe('stocks');
+    });
+
+    it('should update a filter', () => {
+      useUIStore.getState().setFilter('category', 'stocks');
+      useUIStore.getState().setFilter('category', 'crypto');
+      const state = useUIStore.getState();
+      expect(state.filters['category']).toBe('crypto');
+    });
+
+    it('should handle multiple filters', () => {
+      useUIStore.getState().setFilter('category', 'stocks');
+      useUIStore.getState().setFilter('price', 'high');
+      const state = useUIStore.getState();
+      expect(state.filters['category']).toBe('stocks');
+      expect(state.filters['price']).toBe('high');
+    });
+
+    it('should clear all filters', () => {
+      useUIStore.getState().setFilter('category', 'stocks');
+      useUIStore.getState().setFilter('price', 'high');
+      useUIStore.getState().clearFilters();
+      const state = useUIStore.getState();
+      expect(state.filters).toEqual({});
     });
   });
 });

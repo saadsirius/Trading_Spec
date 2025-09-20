@@ -4,8 +4,8 @@
  */
 'use client';
 
-import { cardVariants } from '@/src/utils/cva-presets';
-import { cn } from '@/src/utils/cn';
+import { cardVariants } from '@/utils/cva-presets';
+import { cn } from '@/utils/cn';
 
 type CardProps = React.HTMLAttributes<HTMLDivElement> & {
   padded?: boolean;

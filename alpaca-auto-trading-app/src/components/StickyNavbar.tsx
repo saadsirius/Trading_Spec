@@ -1,53 +1,49 @@
+/**
+ * File: src/components/StickyNavbar.tsx
+ * Description: Sticky navigation bar with blur effect.
+ */
 'use client';
-import { useEffect, useState } from 'react';
-import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
-import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
+
+import React, { useEffect, useState } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
 
 interface StickyNavbarProps {
   children: React.ReactNode;
+  className?: string;
 }
 
-export default function StickyNavbar({ children }: StickyNavbarProps) {
-  const [isVisible, setIsVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
+export default function StickyNavbar({ children, className = '' }: StickyNavbarProps) {
+  const [isScrolled, setIsScrolled] = useState(false);
   const { scrollY } = useScroll();
-  
-  const navbarY = useTransform(scrollY, [0, 100], [0, -100]);
-  const navbarOpacity = useTransform(scrollY, [0, 50], [1, 0.95]);
-  const navbarBlur = useTransform(scrollY, [0, 100], [0, 20]);
+  const y = useTransform(scrollY, [0, 100], [0, -100]);
+  const opacity = useTransform(scrollY, [0, 100], [1, 0.95]);
 
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    const previous = lastScrollY;
-    const current = latest;
-    
-    if (current < previous) {
-      // Scrolling up
-      setIsVisible(true);
-    } else if (current > previous && current > 100) {
-      // Scrolling down
-      setIsVisible(false);
-    }
-    
-    setLastScrollY(current);
-  });
+  useEffect(() => {
+    const unsubscribe = scrollY.onChange((latest) => {
+      setIsScrolled(latest > 50);
+    });
+
+    return unsubscribe;
+  }, [scrollY]);
 
   return (
     <motion.nav
-      className="fixed top-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-md border-b border-gray-800"
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        isScrolled ? 'bg-gray-900/80 backdrop-blur-md' : 'bg-transparent'
+      } ${className}`}
       style={{
-        y: navbarY,
-        opacity: navbarOpacity,
-        backdropFilter: `blur(${navbarBlur}px)`
+        y,
+        opacity,
+        backdropFilter: `blur(${isScrolled ? 12 : 0}px)`,
       }}
       animate={{
-        y: isVisible ? 0 : -100,
-        opacity: isVisible ? 1 : 0
+        y: isScrolled ? 0 : 0,
+        opacity: isScrolled ? 0.95 : 1,
       }}
       transition={{
-        type: "spring",
+        type: 'spring',
         stiffness: 300,
-        damping: 30
+        damping: 30,
       }}
     >
       {children}

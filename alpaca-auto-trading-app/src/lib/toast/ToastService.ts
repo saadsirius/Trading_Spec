@@ -1,39 +1,67 @@
-export type Toast = { id: string; title: string; desc?: string; ttlMs?: number };
-type Callback = (t: Toast, kind: 'show'|'update'|'dismiss') => void;
+/**
+ * File: src/lib/toast/ToastService.ts
+ * Description: Toast notification service.
+ */
+import toast from 'react-hot-toast';
 
-const subs = new Set<Callback>();
-const live = new Map<string, Toast>();
-
-export const Toasts = {
-  subscribe(cb: Callback) { subs.add(cb); return () => subs.delete(cb); },
-  /** show: auto-ID si non fourni */
-  show(title: string, desc?: string, ttlMs?: number) {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    const t: Toast = { id, title, desc, ttlMs };
-    live.set(id, t);
-    subs.forEach(cb => cb(t, 'show'));
-    if (ttlMs && ttlMs > 0) setTimeout(() => Toasts.dismiss(id), ttlMs);
-    return id;
-  },
-  /** showById: utile pour remplacer un toast existant (id stable) */
-  showById(id: string, title: string, desc?: string, ttlMs?: number) {
-    const t: Toast = { id, title, desc, ttlMs };
-    live.set(id, t);
-    subs.forEach(cb => cb(t, 'show'));
-    if (ttlMs && ttlMs > 0) setTimeout(() => Toasts.dismiss(id), ttlMs);
-    return id;
-  },
-  update(id: string, patch: Partial<Omit<Toast,'id'>>) {
-    const cur = live.get(id); if (!cur) return false;
-    const t = { ...cur, ...patch };
-    live.set(id, t);
-    subs.forEach(cb => cb(t, 'update'));
-    return true;
-  },
-  dismiss(id: string) {
-    const cur = live.get(id); if (!cur) return false;
-    live.delete(id);
-    subs.forEach(cb => cb(cur, 'dismiss'));
-    return true;
+export class ToastService {
+  static success(message: string) {
+    return toast.success(message);
   }
-};
+
+  static error(message: string) {
+    return toast.error(message);
+  }
+
+  static warning(message: string) {
+    return toast(message, {
+      icon: '⚠️',
+      style: {
+        background: '#f59e0b',
+        color: '#fff',
+      },
+    });
+  }
+
+  static info(message: string) {
+    return toast(message, {
+      icon: 'ℹ️',
+      style: {
+        background: '#3b82f6',
+        color: '#fff',
+      },
+    });
+  }
+
+  static loading(message: string) {
+    return toast.loading(message);
+  }
+
+  static promise<T>(
+    promise: Promise<T>,
+    messages: {
+      loading: string;
+      success: string;
+      error: string;
+    }
+  ) {
+    return toast.promise(promise, messages);
+  }
+
+  static dismiss(id?: string) {
+    if (id) {
+      toast.dismiss(id);
+    } else {
+      toast.dismiss();
+    }
+  }
+}
+
+// Export individual functions for convenience
+export const showSuccess = ToastService.success;
+export const showError = ToastService.error;
+export const showWarning = ToastService.warning;
+export const showInfo = ToastService.info;
+export const showLoading = ToastService.loading;
+export const showPromise = ToastService.promise;
+export const dismissToast = ToastService.dismiss;

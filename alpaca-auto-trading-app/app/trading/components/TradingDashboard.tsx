@@ -1,363 +1,371 @@
+/**
+ * File: app/trading/components/TradingDashboard.tsx
+ * Purpose: Main trading dashboard layout with all required panels for professional trading
+ * Key dependencies: React, Next.js, TailwindCSS, lightweight-charts, SSE
+ * Learning Angle: This demonstrates how to structure a complex trading interface with real-time data,
+ * proper state management, and risk controls. Notice how we separate concerns into focused panels.
+ */
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { AdvancedChart } from './AdvancedChart';
-import { OrderTicket } from './OrderTicket';
-import { PortfolioTable } from './PortfolioTable';
-import { JournalTable } from './JournalTable';
-import { NotificationBell } from './NotificationBell';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { TrendingUp, TrendingDown, DollarSign, Activity, Bell } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 
-interface Position {
-  symbol: string;
-  quantity: number;
-  avgPrice: number;
-  currentPrice: number;
-  marketValue: number;
-  unrealizedPL: number;
-  unrealizedPLPercent: number;
-  side: 'long' | 'short';
-}
+// Lazy load heavy components for better performance
+const TradingChart = dynamic(() => import('./TradingChart'), { 
+  loading: () => <div className="ds-card p-4 animate-pulse h-96" /> 
+});
+const OrderEntry = dynamic(() => import('./OrderEntry'), { 
+  loading: () => <div className="ds-card p-4 animate-pulse h-64" /> 
+});
+const PositionsTable = dynamic(() => import('./PositionsTable'), { 
+  loading: () => <div className="ds-card p-4 animate-pulse h-64" /> 
+});
+const OrdersTable = dynamic(() => import('./OrdersTable'), { 
+  loading: () => <div className="ds-card p-4 animate-pulse h-64" /> 
+});
+const RiskPanel = dynamic(() => import('./RiskPanel'), { 
+  loading: () => <div className="ds-card p-4 animate-pulse h-48" /> 
+});
 
-interface Trade {
-  id: string;
-  symbol: string;
-  side: 'buy' | 'sell';
-  quantity: number;
-  price: number;
-  timestamp: string;
-  pnl?: number;
-  pnlPercent?: number;
-  status: 'filled' | 'pending' | 'cancelled';
-  orderType: 'market' | 'limit';
-  notes?: string;
-}
+// Import notification components
+import NotificationBell from '@/components/notifications/NotificationBell';
+import ToastRail from '@/components/notifications/ToastRail';
 
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  timestamp: string;
-  read: boolean;
+// Import trading state management
+import { useTradingStore } from '@/state/tradingStore';
+import { useNotificationStore } from '@/state/notificationStore';
+
+// Types for trading data
+interface TradingState {
+  mode: 'paper' | 'live';
+  account: any;
+  positions: any[];
+  orders: any[];
+  selectedSymbol: string;
+  isConnected: boolean;
+  lastUpdate: Date;
 }
 
 export default function TradingDashboard() {
-  const [activeTab, setActiveTab] = useState<'chart' | 'portfolio' | 'journal'>('chart');
-  const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
-  const [currentPrice, setCurrentPrice] = useState(150.25);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const router = useRouter();
+  const [tradingState, setTradingState] = useState<TradingState>({
+    mode: 'paper',
+    account: null,
+    positions: [],
+    orders: [],
+    selectedSymbol: 'SPY',
+    isConnected: false,
+    lastUpdate: new Date()
+  });
+
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data initialization
-  useEffect(() => {
-    const initializeData = () => {
-      setIsLoading(true);
-      
-      // Mock positions
-      setPositions([
-        {
-          symbol: 'AAPL',
-          quantity: 100,
-          avgPrice: 145.50,
-          currentPrice: 150.25,
-          marketValue: 15025,
-          unrealizedPL: 475,
-          unrealizedPLPercent: 3.26,
-          side: 'long'
-        },
-        {
-          symbol: 'GOOGL',
-          quantity: 50,
-          avgPrice: 2800.00,
-          currentPrice: 2750.00,
-          marketValue: 137500,
-          unrealizedPL: -2500,
-          unrealizedPLPercent: -1.79,
-          side: 'long'
-        }
-      ]);
+  // Trading store for global state
+  const { 
+    switchMode, 
+    updateAccount, 
+    updatePositions, 
+    updateOrders,
+    selectedSymbol,
+    setSelectedSymbol 
+  } = useTradingStore();
 
-      // Mock trades
-      setTrades([
-        {
-          id: '1',
-          symbol: 'AAPL',
-          side: 'buy',
-          quantity: 100,
-          price: 145.50,
-          timestamp: new Date(Date.now() - 86400000).toISOString(),
-          status: 'filled',
-          orderType: 'market',
-          notes: 'Initial position'
-        },
-        {
-          id: '2',
-          symbol: 'GOOGL',
-          side: 'buy',
-          quantity: 50,
-          price: 2800.00,
-          timestamp: new Date(Date.now() - 172800000).toISOString(),
-          status: 'filled',
-          orderType: 'market',
-          notes: 'Tech portfolio addition'
-        }
-      ]);
+  // Notification store for alerts
+  const { notifications, markAsRead } = useNotificationStore();
 
-      // Mock notifications
-      setNotifications([
-        {
-          id: '1',
-          title: 'Order Filled',
-          message: 'AAPL buy order for 100 shares at $145.50 has been filled.',
-          type: 'success',
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          read: false
-        },
-        {
-          id: '2',
-          title: 'AI Signal',
-          message: 'Strong buy signal detected for TSLA with 85% confidence.',
-          type: 'info',
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-          read: false
-        }
-      ]);
+  // Initialize trading data
+  const initializeTrading = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-      setIsLoading(false);
-    };
-
-    initializeData();
-  }, []);
-
-  const handleOrderSubmit = async (orderData: any) => {
     try {
-      console.log('Order submitted:', orderData);
+      // Fetch account information
+      const accountResponse = await fetch('/api/account');
+      if (!accountResponse.ok) {
+        throw new Error(`Account fetch failed: ${accountResponse.status}`);
+      }
+      const account = await accountResponse.json();
       
-      // Add new trade to journal
-      const newTrade: Trade = {
-        id: Date.now().toString(),
-        symbol: orderData.symbol || selectedSymbol,
-        side: orderData.side,
-        quantity: orderData.quantity,
-        price: orderData.orderType === 'market' ? currentPrice : orderData.limitPrice,
-        timestamp: new Date().toISOString(),
-        status: 'filled',
-        orderType: orderData.orderType,
-        notes: `Order placed via trading dashboard`
-      };
+      // Fetch positions
+      const positionsResponse = await fetch('/api/positions');
+      const positions = positionsResponse.ok ? await positionsResponse.json() : [];
+      
+      // Fetch open orders
+      const ordersResponse = await fetch('/api/orders?status=open');
+      const orders = ordersResponse.ok ? await ordersResponse.json() : [];
 
-      setTrades(prev => [newTrade, ...prev]);
+      setTradingState(prev => ({
+        ...prev,
+        account,
+        positions,
+        orders,
+        isConnected: true,
+        lastUpdate: new Date()
+      }));
 
-      // Add notification
-      const newNotification: Notification = {
-        id: Date.now().toString(),
-        title: 'Order Executed',
-        message: `${orderData.side.toUpperCase()} order for ${orderData.quantity} ${selectedSymbol} has been executed.`,
-        type: 'success',
-        timestamp: new Date().toISOString(),
-        read: false
-      };
+      // Update global store
+      updateAccount(account);
+      updatePositions(positions);
+      updateOrders(orders);
 
-      setNotifications(prev => [newNotification, ...prev]);
-
-      alert('Order submitted successfully!');
-    } catch (error) {
-      console.error('Order submission error:', error);
-      alert('Failed to submit order');
+    } catch (err: any) {
+      console.error('Failed to initialize trading data:', err);
+      setError(err.message || 'Failed to load trading data');
+      setTradingState(prev => ({ ...prev, isConnected: false }));
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [updateAccount, updatePositions, updateOrders]);
 
-  const handleClosePosition = (symbol: string) => {
-    setPositions(prev => prev.filter(pos => pos.symbol !== symbol));
-    
-    const notification: Notification = {
-      id: Date.now().toString(),
-      title: 'Position Closed',
-      message: `Position in ${symbol} has been closed.`,
-      type: 'info',
-      timestamp: new Date().toISOString(),
-      read: false
-    };
+  // Handle mode switching (Paper ↔ Live)
+  const handleModeSwitch = useCallback(async (newMode: 'paper' | 'live') => {
+    if (newMode === 'live') {
+      const confirmed = window.confirm(
+        '⚠️ WARNING: You are about to switch to LIVE trading mode.\n\n' +
+        'This will use real money and execute real trades.\n' +
+        'Are you absolutely sure you want to continue?'
+      );
+      if (!confirmed) return;
+    }
 
-    setNotifications(prev => [notification, ...prev]);
-  };
+    try {
+      await switchMode(newMode);
+      setTradingState(prev => ({ ...prev, mode: newMode }));
+      await initializeTrading(); // Refresh data for new mode
+    } catch (err: any) {
+      console.error('Failed to switch trading mode:', err);
+      setError(`Failed to switch to ${newMode} mode: ${err.message}`);
+    }
+  }, [switchMode, initializeTrading]);
 
-  const handleNotificationClick = (notification: Notification) => {
-    setNotifications(prev => 
-      prev.map(n => 
-        n.id === notification.id ? { ...n, read: true } : n
-      )
-    );
-  };
+  // Handle symbol selection
+  const handleSymbolSelect = useCallback((symbol: string) => {
+    setSelectedSymbol(symbol);
+    setTradingState(prev => ({ ...prev, selectedSymbol: symbol }));
+  }, [setSelectedSymbol]);
 
-  const handleMarkAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
+  // Initialize on mount
+  useEffect(() => {
+    initializeTrading();
+  }, [initializeTrading]);
 
-  const handleEditTrade = (tradeId: string) => {
-    console.log('Edit trade:', tradeId);
-    // Implement edit functionality
-  };
+  // Auto-refresh data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (tradingState.isConnected) {
+        initializeTrading();
+      }
+    }, 30000);
 
-  const handleDeleteTrade = (tradeId: string) => {
-    setTrades(prev => prev.filter(trade => trade.id !== tradeId));
-  };
+    return () => clearInterval(interval);
+  }, [tradingState.isConnected, initializeTrading]);
 
-  const totalValue = positions.reduce((sum, pos) => sum + pos.marketValue, 0);
-  const totalPL = positions.reduce((sum, pos) => sum + pos.unrealizedPL, 0);
-  const totalPLPercent = totalValue > 0 ? (totalPL / totalValue) * 100 : 0;
-
+  // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading trading dashboard...</p>
+      <div className="min-h-screen bg-gray-900 p-4">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <div className="ds-card p-4 animate-pulse h-16" />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3 space-y-4">
+              <div className="ds-card p-4 animate-pulse h-96" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="ds-card p-4 animate-pulse h-64" />
+                <div className="ds-card p-4 animate-pulse h-64" />
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="ds-card p-4 animate-pulse h-64" />
+              <div className="ds-card p-4 animate-pulse h-48" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div role="alert" className="ds-card p-6 text-center">
+            <h2 className="text-xl font-semibold text-red-400 mb-4">Trading Dashboard Error</h2>
+            <p className="text-gray-300 mb-4">{error}</p>
+            <button
+              onClick={initializeTrading}
+              className="btn btn-primary"
+              aria-label="Retry loading trading data"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+    <div className="min-h-screen bg-gray-900">
+      {/* Toast notifications */}
+      <ToastRail />
+      
+      {/* Top navigation bar */}
+      <header className="bg-gray-800 border-b border-gray-700 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            {/* Left: Logo and mode selector */}
             <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-gray-900">Trading Dashboard</h1>
+              <h1 className="text-xl font-bold text-white">Trading Dashboard</h1>
               <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm text-gray-600">Paper Trading</span>
+                <span className="text-sm text-gray-400">Mode:</span>
+                <button
+                  onClick={() => handleModeSwitch('paper')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    tradingState.mode === 'paper'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  aria-label="Switch to paper trading mode"
+                >
+                  Paper
+                </button>
+                <button
+                  onClick={() => handleModeSwitch('live')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    tradingState.mode === 'live'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  aria-label="Switch to live trading mode"
+                >
+                  Live
+                </button>
               </div>
             </div>
-            
+
+            {/* Center: Account summary */}
+            <div className="flex items-center space-x-6 text-sm">
+              {tradingState.account && (
+                <>
+                  <div className="text-center">
+                    <div className="text-gray-400">Equity</div>
+                    <div className="font-semibold text-white">
+                      ${parseFloat(tradingState.account.equity || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-gray-400">Buying Power</div>
+                    <div className="font-semibold text-white">
+                      ${parseFloat(tradingState.account.buying_power || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-gray-400">Day P&L</div>
+                    <div className={`font-semibold ${
+                      parseFloat(tradingState.account.daytrading_buying_power || 0) >= 0
+                        ? 'text-emerald-400'
+                        : 'text-red-400'
+                    }`}>
+                      ${parseFloat(tradingState.account.daytrading_buying_power || 0).toLocaleString()}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Right: Connection status and notifications */}
             <div className="flex items-center space-x-4">
-              <NotificationBell
-                notifications={notifications}
-                onNotificationClick={handleNotificationClick}
-                onMarkAllRead={handleMarkAllRead}
-              />
-              <Button variant="secondary">Settings</Button>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  tradingState.isConnected ? 'bg-emerald-400' : 'bg-red-400'
+                }`} />
+                <span className="text-sm text-gray-400">
+                  {tradingState.isConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              <NotificationBell />
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <div className="flex items-center space-x-3">
-              <DollarSign className="w-8 h-8 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Total Value</p>
-                <p className="text-2xl font-bold text-gray-900">${totalValue.toLocaleString()}</p>
+      {/* Main dashboard content */}
+      <main className="max-w-7xl mx-auto p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Left column: Chart and order entry */}
+          <div className="lg:col-span-3 space-y-4">
+            {/* Symbol overview and chart */}
+            <div className="ds-card p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-white">
+                  {tradingState.selectedSymbol} - Market Overview
+                </h2>
+                <div className="flex space-x-2">
+                  {['1m', '5m', '1h', '1d'].map((timeframe) => (
+                    <button
+                      key={timeframe}
+                      className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+                    >
+                      {timeframe}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <TradingChart symbol={tradingState.selectedSymbol} />
             </div>
-          </Card>
 
-          <Card>
-            <div className="flex items-center space-x-3">
-              {totalPL >= 0 ? (
-                <TrendingUp className="w-8 h-8 text-green-600" />
-              ) : (
-                <TrendingDown className="w-8 h-8 text-red-600" />
-              )}
-              <div>
-                <p className="text-sm text-gray-600">Unrealized P&L</p>
-                <p className={`text-2xl font-bold ${totalPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${totalPL.toFixed(2)} ({totalPLPercent.toFixed(2)}%)
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center space-x-3">
-              <Activity className="w-8 h-8 text-purple-600" />
-              <div>
-                <p className="text-sm text-gray-600">Active Positions</p>
-                <p className="text-2xl font-bold text-gray-900">{positions.length}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center space-x-3">
-              <Bell className="w-8 h-8 text-orange-600" />
-              <div>
-                <p className="text-sm text-gray-600">Unread Alerts</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {notifications.filter(n => !n.read).length}
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 mb-6">
-          <Button
-            variant={activeTab === 'chart' ? 'primary' : 'secondary'}
-            onClick={() => setActiveTab('chart')}
-          >
-            Chart & Orders
-          </Button>
-          <Button
-            variant={activeTab === 'portfolio' ? 'primary' : 'secondary'}
-            onClick={() => setActiveTab('portfolio')}
-          >
-            Portfolio
-          </Button>
-          <Button
-            variant={activeTab === 'journal' ? 'primary' : 'secondary'}
-            onClick={() => setActiveTab('journal')}
-          >
-            Trade Journal
-          </Button>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'chart' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <AdvancedChart
-                symbol={selectedSymbol}
-                timeframe="1Day"
+            {/* Order entry and positions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <OrderEntry 
+                symbol={tradingState.selectedSymbol}
+                account={tradingState.account}
+                onOrderSubmitted={initializeTrading}
+              />
+              <PositionsTable 
+                positions={tradingState.positions}
+                onPositionUpdate={initializeTrading}
               />
             </div>
-            <div>
-              <OrderTicket
-                symbol={selectedSymbol}
-                currentPrice={currentPrice}
-                onOrderSubmit={handleOrderSubmit}
-              />
+
+            {/* Orders table */}
+            <OrdersTable 
+              orders={tradingState.orders}
+              onOrderUpdate={initializeTrading}
+            />
+          </div>
+
+          {/* Right column: Risk panel and watchlist */}
+          <div className="space-y-4">
+            <RiskPanel 
+              account={tradingState.account}
+              positions={tradingState.positions}
+            />
+            
+            {/* Watchlist component would go here */}
+            <div className="ds-card p-4">
+              <h3 className="text-lg font-semibold text-white mb-4">Watchlist</h3>
+              <div className="space-y-2">
+                {['AAPL', 'MSFT', 'GOOGL', 'TSLA'].map((symbol) => (
+                  <button
+                    key={symbol}
+                    onClick={() => handleSymbolSelect(symbol)}
+                    className={`w-full text-left p-2 rounded transition-colors ${
+                      tradingState.selectedSymbol === symbol
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {symbol}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        )}
-
-        {activeTab === 'portfolio' && (
-          <PortfolioTable
-            positions={positions}
-            onClosePosition={handleClosePosition}
-          />
-        )}
-
-        {activeTab === 'journal' && (
-          <JournalTable
-            trades={trades}
-            onEditTrade={handleEditTrade}
-            onDeleteTrade={handleDeleteTrade}
-          />
-        )}
+        </div>
       </main>
     </div>
   );

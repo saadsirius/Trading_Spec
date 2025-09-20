@@ -1,43 +1,108 @@
-const tpl = document.createElement('template');
-tpl.innerHTML = `<style>
-:host{ display:inline-block; }
-.c{ width:120px; height:28px; }
-svg{ width:100%; height:100%; overflow:visible; }
-path{ fill:none; stroke: var(--ds-accent, #22d3ee); stroke-width:2; }
-</style><div class="c"><svg viewBox="0 0 120 28"><path/></svg></div>`;
+/**
+ * File: src/webc/ai-sparkline.ts
+ * Description: Web Component for AI-powered sparkline visualization.
+ */
+'use client';
 
-export class AISparkline extends HTMLElement {
-  shadow: ShadowRoot; 
-  path: SVGPathElement;
-  
-  constructor() { 
-    super(); 
-    this.shadow = this.attachShadow({ mode: 'open' }); 
-    this.shadow.appendChild(tpl.content.cloneNode(true)); 
-    this.path = this.shadow.querySelector('path') as SVGPathElement; 
+class AISparkline extends HTMLElement {
+  private canvas: HTMLCanvasElement | null = null;
+  private data: number[] = [];
+  private animationId: number | null = null;
+
+  static get observedAttributes() {
+    return ['data'];
   }
-  
-  static get observedAttributes() { return ['data']; }
-  
-  attributeChangedCallback() { this.render(); }
-  
-  connectedCallback() { this.render(); }
-  
-  render() { 
+
+  connectedCallback() {
+    this.createCanvas();
+    this.render();
+  }
+
+  disconnectedCallback() {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+    }
+  }
+
+  attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    if (name === 'data' && oldValue !== newValue) {
+      this.parseData(newValue);
+      this.render();
+    }
+  }
+
+  private createCanvas() {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = 140;
+    this.canvas.height = 32;
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.appendChild(this.canvas);
+  }
+
+  private parseData(dataString: string) {
+    if (!dataString) {
+      this.data = [];
+      return;
+    }
+    
     try {
-      const data = (this.getAttribute('data') || '').split(',').map(x => Number(x)).filter(x => Number.isFinite(x));
-      if (!data.length) return;
-      const max = Math.max(...data), min = Math.min(...data);
-      const pts = data.map((v, i) => [
-        (i / (data.length - 1)) * 120, 
-        28 - ((v - min) / Math.max(1e-9, (max - min))) * 28
-      ]);
-      const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' ');
-      this.path.setAttribute('d', d);
-    } catch {} 
+      this.data = dataString.split(',').map(Number).filter(n => !isNaN(n));
+    } catch {
+      this.data = [];
+    }
+  }
+
+  private render() {
+    if (!this.canvas || this.data.length === 0) return;
+
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+
+    const { width, height } = this.canvas;
+    const padding = 2;
+    const drawWidth = width - padding * 2;
+    const drawHeight = height - padding * 2;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Find min/max for scaling
+    const min = Math.min(...this.data);
+    const max = Math.max(...this.data);
+    const range = max - min || 1;
+
+    // Draw sparkline
+    ctx.beginPath();
+    ctx.strokeStyle = '#22D3EE';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    this.data.forEach((value, index) => {
+      const x = padding + (index / (this.data.length - 1)) * drawWidth;
+      const y = padding + drawHeight - ((value - min) / range) * drawHeight;
+      
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+
+    ctx.stroke();
+
+    // Add subtle glow effect
+    ctx.shadowColor = '#22D3EE';
+    ctx.shadowBlur = 4;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
   }
 }
 
-if (!customElements.get('ai-sparkline')) {
+// Register the custom element
+if (typeof window !== 'undefined' && !customElements.get('ai-sparkline')) {
   customElements.define('ai-sparkline', AISparkline);
 }
+
+export default AISparkline;

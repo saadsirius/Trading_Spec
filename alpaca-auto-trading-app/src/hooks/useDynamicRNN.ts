@@ -1,90 +1,219 @@
 /**
  * File: src/hooks/useDynamicRNN.ts
- * Description: Dynamic RNN hook for spatio-temporal sequence scoring.
+ * Description: Dynamic RNN hook for financial sequence analysis and ROI scoring.
  */
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useMemo, useRef, useCallback } from 'react';
 
 type Sample = [don: number, momentum: number, rsi: number, sentiment: number, growth: number, deltaCPI: number];
-type Sequence = Sample[];
+type Seq = Sample[];
 
 interface RNNState {
   hidden: number[];
   cell: number[];
 }
 
-export function useDynamicRNN() {
-  // Simple RNN parameters (would be loaded from a model in production)
-  const weights = useMemo(() => ({
-    // Input to hidden weights (6 features -> 32 hidden units)
-    W_ih: Array.from({ length: 6 * 32 }, () => (Math.random() - 0.5) * 0.1),
-    // Hidden to hidden weights (32 -> 32)
-    W_hh: Array.from({ length: 32 * 32 }, () => (Math.random() - 0.5) * 0.1),
-    // Hidden to output weights (32 -> 1)
-    W_ho: Array.from({ length: 32 }, () => (Math.random() - 0.5) * 0.1),
-    // Biases
-    b_h: Array.from({ length: 32 }, () => 0),
-    b_o: 0,
-  }), []);
+interface RNNConfig {
+  hiddenSize: number;
+  learningRate: number;
+  sequenceLength: number;
+}
 
-  const sigmoid = useCallback((x: number) => 1 / (1 + Math.exp(-x)), []);
-  const tanh = useCallback((x: number) => Math.tanh(x), []);
+class DynamicRNN {
+  private config: RNNConfig;
+  private weights: {
+    input: number[][];
+    hidden: number[][];
+    output: number[][];
+    bias: number[];
+  };
+  private state: RNNState;
 
-  const score = useCallback((sequence: Sequence): number => {
-    if (sequence.length === 0) return 0;
+  constructor(config: Partial<RNNConfig> = {}) {
+    this.config = {
+      hiddenSize: 32,
+      learningRate: 0.01,
+      sequenceLength: 64,
+      ...config,
+    };
 
-    // Initialize hidden state
-    let hidden = Array.from({ length: 32 }, () => 0);
-    let cell = Array.from({ length: 32 }, () => 0);
+    this.weights = this.initializeWeights();
+    this.state = this.initializeState();
+  }
 
-    // Process sequence
-    for (const sample of sequence) {
-      const newHidden = Array.from({ length: 32 }, () => 0);
-      const newCell = Array.from({ length: 32 }, () => 0);
+  private initializeWeights() {
+    const { hiddenSize } = this.config;
+    const inputSize = 6; // don, momentum, rsi, sentiment, growth, deltaCPI
+    const outputSize = 1; // ROI score
 
-      for (let h = 0; h < 32; h++) {
-        // Input to hidden
-        let inputSum = 0;
-        for (let i = 0; i < 6; i++) {
-          inputSum += sample[i] * weights.W_ih[i * 32 + h];
-        }
+    return {
+      input: this.randomMatrix(inputSize, hiddenSize),
+      hidden: this.randomMatrix(hiddenSize, hiddenSize),
+      output: this.randomMatrix(hiddenSize, outputSize),
+      bias: this.randomVector(hiddenSize),
+    };
+  }
 
-        // Hidden to hidden
-        let hiddenSum = 0;
-        for (let h2 = 0; h2 < 32; h2++) {
-          hiddenSum += hidden[h2] * weights.W_hh[h2 * 32 + h];
-        }
+  private initializeState(): RNNState {
+    return {
+      hidden: new Array(this.config.hiddenSize).fill(0),
+      cell: new Array(this.config.hiddenSize).fill(0),
+    };
+  }
 
-        // LSTM-like gating (simplified)
-        const forgetGate = sigmoid(inputSum + hiddenSum + weights.b_h[h]);
-        const inputGate = sigmoid(inputSum + hiddenSum + weights.b_h[h] + 0.1);
-        const candidate = tanh(inputSum + hiddenSum + weights.b_h[h]);
+  private randomMatrix(rows: number, cols: number): number[][] {
+    return Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => (Math.random() - 0.5) * 0.1)
+    );
+  }
 
-        newCell[h] = forgetGate * cell[h] + inputGate * candidate;
-        newHidden[h] = tanh(newCell[h]);
+  private randomVector(size: number): number[] {
+    return Array.from({ length: size }, () => (Math.random() - 0.5) * 0.1);
+  }
+
+  private sigmoid(x: number): number {
+    return 1 / (1 + Math.exp(-x));
+  }
+
+  private tanh(x: number): number {
+    return Math.tanh(x);
+  }
+
+  private forward(input: Sample): number {
+    const { hiddenSize } = this.config;
+    const newHidden = new Array(hiddenSize).fill(0);
+    const newCell = new Array(hiddenSize).fill(0);
+
+    // LSTM-like computation (simplified)
+    for (let i = 0; i < hiddenSize; i++) {
+      // Input gate
+      let inputGate = 0;
+      for (let j = 0; j < 6; j++) {
+        inputGate += input[j] * this.weights.input[j][i];
       }
+      for (let j = 0; j < hiddenSize; j++) {
+        inputGate += this.state.hidden[j] * this.weights.hidden[j][i];
+      }
+      inputGate = this.sigmoid(inputGate + this.weights.bias[i]);
 
-      hidden = newHidden;
-      cell = newCell;
+      // Forget gate
+      let forgetGate = 0;
+      for (let j = 0; j < 6; j++) {
+        forgetGate += input[j] * this.weights.input[j][i];
+      }
+      for (let j = 0; j < hiddenSize; j++) {
+        forgetGate += this.state.hidden[j] * this.weights.hidden[j][i];
+      }
+      forgetGate = this.sigmoid(forgetGate + this.weights.bias[i]);
+
+      // Cell state
+      let cellInput = 0;
+      for (let j = 0; j < 6; j++) {
+        cellInput += input[j] * this.weights.input[j][i];
+      }
+      for (let j = 0; j < hiddenSize; j++) {
+        cellInput += this.state.hidden[j] * this.weights.hidden[j][i];
+      }
+      cellInput = this.tanh(cellInput + this.weights.bias[i]);
+
+      newCell[i] = forgetGate * this.state.cell[i] + inputGate * cellInput;
+
+      // Output gate
+      let outputGate = 0;
+      for (let j = 0; j < 6; j++) {
+        outputGate += input[j] * this.weights.input[j][i];
+      }
+      for (let j = 0; j < hiddenSize; j++) {
+        outputGate += this.state.hidden[j] * this.weights.hidden[j][i];
+      }
+      outputGate = this.sigmoid(outputGate + this.weights.bias[i]);
+
+      newHidden[i] = outputGate * this.tanh(newCell[i]);
     }
+
+    this.state.hidden = newHidden;
+    this.state.cell = newCell;
 
     // Output layer
-    let output = weights.b_o;
-    for (let h = 0; h < 32; h++) {
-      output += hidden[h] * weights.W_ho[h];
+    let output = 0;
+    for (let i = 0; i < hiddenSize; i++) {
+      output += this.state.hidden[i] * this.weights.output[i][0];
     }
 
-    // Normalize to [0, 1] range
-    return Math.max(0, Math.min(1, sigmoid(output)));
-  }, [weights, sigmoid, tanh]);
+    return this.sigmoid(output);
+  }
+
+  public score(sequence: Seq): number {
+    if (!sequence.length) return 0;
+
+    // Reset state
+    this.state = this.initializeState();
+
+    // Process sequence
+    let totalScore = 0;
+    for (const sample of sequence) {
+      const score = this.forward(sample);
+      totalScore += score;
+    }
+
+    // Normalize and return average score
+    return totalScore / sequence.length;
+  }
+
+  public updateWeights(sequence: Seq, target: number) {
+    // Simplified gradient descent update
+    const prediction = this.score(sequence);
+    const error = target - prediction;
+
+    // Update weights based on error (simplified)
+    const { learningRate } = this.config;
+    for (let i = 0; i < this.weights.output.length; i++) {
+      this.weights.output[i][0] += learningRate * error * this.state.hidden[i];
+    }
+  }
+
+  public getState(): RNNState {
+    return { ...this.state };
+  }
+
+  public getConfig(): RNNConfig {
+    return { ...this.config };
+  }
+}
+
+export function useDynamicRNN(config?: Partial<RNNConfig>) {
+  const rnnRef = useRef<DynamicRNN | null>(null);
+
+  const rnn = useMemo(() => {
+    if (!rnnRef.current) {
+      rnnRef.current = new DynamicRNN(config);
+    }
+    return rnnRef.current;
+  }, [config?.hiddenSize, config?.learningRate, config?.sequenceLength]);
+
+  const score = useCallback((sequence: Seq) => {
+    return rnn.score(sequence);
+  }, [rnn]);
+
+  const update = useCallback((sequence: Seq, target: number) => {
+    rnn.updateWeights(sequence, target);
+  }, [rnn]);
+
+  const getState = useCallback(() => {
+    return rnn.getState();
+  }, [rnn]);
+
+  const getConfig = useCallback(() => {
+    return rnn.getConfig();
+  }, [rnn]);
 
   return {
     score,
-    // Additional methods for debugging/analysis
-    getWeights: () => weights,
-    reset: () => {
-      // Reset internal state if needed
-    },
+    update,
+    getState,
+    getConfig,
   };
 }
+
+export type { Sample, Seq, RNNConfig, RNNState };

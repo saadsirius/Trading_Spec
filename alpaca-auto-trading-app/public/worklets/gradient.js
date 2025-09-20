@@ -1,21 +1,34 @@
-// RegisterPaint('ripple-bg') — dégradé pulsé par temps
-class RippleBg {
-  static get inputProperties() { return []; }
-  
-  paint(ctx, geom) { 
-    const t = Date.now() / 1000; 
-    const r = Math.min(geom.width, geom.height) / 2;
+/**
+ * File: public/worklets/gradient.js
+ * Description: CSS Houdini paint worklet for gradient effects.
+ */
+class GradientWorklet {
+  static get inputProperties() {
+    return ['--gradient-color', '--gradient-angle'];
+  }
+
+  paint(ctx, size, properties) {
+    const color = properties.get('--gradient-color') || 'rgba(34, 211, 238, 0.1)';
+    const angle = properties.get('--gradient-angle') || '45deg';
     
-    for (let i = 0; i < 6; i++) { 
-      const rr = r * (i / 6); 
-      const a = .08 + .06 * Math.sin(t + i);
-      ctx.beginPath(); 
-      ctx.arc(geom.width / 2, geom.height / 2, rr, 0, 2 * Math.PI);
-      ctx.strokeStyle = `rgba(34,211,238,${a})`; 
-      ctx.lineWidth = 2; 
-      ctx.stroke();
-    }
+    // Parse angle
+    const angleValue = parseFloat(angle);
+    const angleRad = (angleValue * Math.PI) / 180;
+    
+    // Create gradient
+    const gradient = ctx.createLinearGradient(
+      Math.cos(angleRad) * size.width,
+      Math.sin(angleRad) * size.height,
+      Math.cos(angleRad + Math.PI) * size.width,
+      Math.sin(angleRad + Math.PI) * size.height
+    );
+    
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size.width, size.height);
   }
 }
 
-registerPaint('ripple-bg', RippleBg);
+registerPaint('gradient', GradientWorklet);

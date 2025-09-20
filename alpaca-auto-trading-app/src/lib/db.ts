@@ -1,11 +1,15 @@
-// Mock database for development
-export const db = {
-  query: (sql: string, params?: any[]) => {
-    console.log('DB: Query:', sql, params);
-    return Promise.resolve([]);
-  },
-  transaction: (callback: (tx: any) => Promise<any>) => {
-    console.log('DB: Transaction started');
-    return callback({});
-  }
-};
+/**
+ * File: src/lib/db.ts
+ * Description: Database connection and utilities.
+ */
+import { PrismaClient } from '@prisma/client';
+
+declare global {
+  var prisma: PrismaClient | undefined;
+}
+
+export const prisma = globalThis.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma;
+}

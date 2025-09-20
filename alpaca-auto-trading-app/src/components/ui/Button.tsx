@@ -4,8 +4,8 @@
  */
 'use client';
 
-import { buttonVariants } from '@/src/utils/cva-presets';
-import { cn } from '@/src/utils/cn';
+import { buttonVariants } from '@/utils/cva-presets';
+import { cn } from '@/utils/cn';
 import styles from './Button.module.css';
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {

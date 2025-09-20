@@ -1,45 +1,54 @@
+/**
+ * File: src/components/ui/MaterialButton.tsx
+ * Description: Material-UI Button component with Framer Motion animations.
+ */
 'use client';
-import { motion } from 'framer-motion';
+
+import React from 'react';
 import { Button, ButtonProps } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { motion } from 'framer-motion';
 
-const StyledButton = styled(Button)(({ theme }) => ({
-  borderRadius: 8,
-  textTransform: 'none',
-  fontWeight: 600,
-  transition: 'all 0.2s ease-in-out',
-  '&:hover': {
-    transform: 'translateY(-1px)',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-  },
-}));
-
-interface MaterialButtonProps extends ButtonProps {
-  ripple?: boolean;
-  animated?: boolean;
+interface MaterialButtonProps extends Omit<ButtonProps, 'onDrag'> {
+  loading?: boolean;
+  children: React.ReactNode;
 }
 
-export default function MaterialButton({ 
-  children, 
-  ripple = true, 
-  animated = true,
-  ...props 
+export default function MaterialButton({
+  loading = false,
+  children,
+  disabled,
+  ...props
 }: MaterialButtonProps) {
-  const ButtonComponent = animated ? motion(StyledButton) : StyledButton;
-  
-  const motionProps = animated ? {
-    whileHover: { scale: 1.02 },
-    whileTap: { scale: 0.98 },
-    transition: { type: "spring", stiffness: 400, damping: 17 }
-  } : {};
-
   return (
-    <ButtonComponent
-      {...motionProps}
-      {...props}
-      disableRipple={!ripple}
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 17 }}
     >
-      {children}
-    </ButtonComponent>
+      <Button
+        {...props}
+        disabled={disabled || loading}
+        disableRipple
+        sx={{
+          textTransform: 'none',
+          fontWeight: 600,
+          borderRadius: 2,
+          px: 3,
+          py: 1.5,
+          ...props.sx,
+        }}
+      >
+        {loading ? (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            style={{ marginRight: 8 }}
+          >
+            ⟳
+          </motion.div>
+        ) : null}
+        {children}
+      </Button>
+    </motion.div>
   );
 }

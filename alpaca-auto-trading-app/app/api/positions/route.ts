@@ -1,50 +1,73 @@
+/**
+ * File: app/api/positions/route.ts
+ * Purpose: Alpaca positions API proxy with proper error handling
+ * Key dependencies: Next.js, axios
+ * Learning Angle: This demonstrates how to create a simple API proxy for
+ * fetching positions data. Notice how we handle different environments
+ * and provide consistent error responses.
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import { log } from '@/mw/log';
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
+  const requestId = req.headers.get('x-request-id') || 'unknown';
+  
   try {
-    const { searchParams } = new URL(request.url);
-    const mode = searchParams.get('mode') || 'paper';
+    log.info({ requestId }, 'Fetching positions');
 
-    const PAPER_BASE = process.env.APCA_PAPER_BASE_URL || "https://paper-api.alpaca.markets/v2";
-    const KEY_ID = process.env.APCA_API_KEY_ID;
-    const SECRET = process.env.APCA_API_SECRET_KEY;
+    // Get environment configuration
+    const isLive = req.nextUrl.searchParams.get('env') === 'live';
+    const baseUrl = isLive 
+      ? process.env.APCA_LIVE_BASE_URL || 'https://api.alpaca.markets/v2'
+      : process.env.APCA_PAPER_BASE_URL || 'https://paper-api.alpaca.markets/v2';
     
-    if (!KEY_ID || !SECRET) {
+    const apiKey = process.env.APCA_API_KEY_ID;
+    const secretKey = process.env.APCA_API_SECRET_KEY;
+
+    if (!apiKey || !secretKey) {
       return NextResponse.json(
-        { error: 'Alpaca API keys not configured' },
+        { error: 'API configuration error' },
         { status: 500 }
       );
     }
-    
-    const headers = {
-      "APCA-API-KEY-ID": KEY_ID,
-      "APCA-API-SECRET-KEY": SECRET,
-      "Content-Type": "application/json",
-    };
-    
-    // Fetch positions from Alpaca
-    const { data: alpacaPositions } = await axios.get(`${PAPER_BASE}/positions`, { headers });
-    
-    // Transform Alpaca positions to match expected format
-    const transformedPositions = alpacaPositions.map((pos: any) => ({
-      id: pos.asset_id,
-      symbol: pos.symbol,
-      qty: parseFloat(pos.qty),
-      avgPrice: parseFloat(pos.avg_entry_price),
-      marketPrice: parseFloat(pos.current_price),
-      pnl: parseFloat(pos.unrealized_pl),
-      pnlPct: parseFloat(pos.unrealized_plpc) * 100,
-      sector: pos.asset_class || 'Unknown',
-      updatedAt: new Date().toISOString()
-    }));
 
-    console.log('Positions fetched successfully from Alpaca', { mode, count: transformedPositions.length });
-    return NextResponse.json(transformedPositions);
-  } catch (error) {
-    console.error('Error fetching positions', error);
+    // Prepare headers
+    const headers = {
+      'APCA-API-KEY-ID': apiKey,
+      'APCA-API-SECRET-KEY': secretKey,
+    };
+
+    // Fetch positions from Alpaca
+    const response = await axios.get(`${baseUrl}/positions`, {
+      headers,
+      timeout: 10000,
+    });
+
+    log.info({ 
+      requestId, 
+      count: response.data.length 
+    }, 'Positions fetched successfully');
+
+    return NextResponse.json({
+      data: response.data,
+      env: isLive ? 'live' : 'paper',
+      success: true,
+    });
+
+  } catch (error: any) {
+    log.error({ requestId, error: error.message }, 'Failed to fetch positions');
+
+    if (error.response) {
+      return NextResponse.json(
+        { error: 'Failed to fetch positions', details: error.response.data?.message },
+        { status: error.response.status }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Failed to fetch positions' },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     );
   }
