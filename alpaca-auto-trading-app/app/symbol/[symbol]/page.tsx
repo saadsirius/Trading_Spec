@@ -46,7 +46,7 @@ export default async function SymbolPage({ params }: { params: { symbol: string 
 
       {/* Chart container */}
       <section className="glass p-0" data-testid="chart-container">
-        <EquityChart data={[]} title={`${symbol} — Price`} symbol={symbol} />
+        <EquityChart data={[]} title={`${symbol} — Price`} />
       </section>
 
       {/* Placeholder for tabs / future widgets */}

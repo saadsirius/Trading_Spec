@@ -1,75 +1,43 @@
-/**
- * File: src/lib/shortcuts.ts
- * Description: Keyboard shortcuts management.
- */
-export interface ShortcutConfig {
-  key: string;
-  ctrl?: boolean;
-  alt?: boolean;
-  shift?: boolean;
-  meta?: boolean;
-  action: () => void;
-  description?: string;
-}
+export type KeyCombo = string | string[];
 
-export class ShortcutManager {
-  private shortcuts = new Map<string, ShortcutConfig>();
-  private isEnabled = true;
+export const combos = {
+  openPalette: ['meta', 'k'] as string[],  // ⌘K
+  openPaletteAlt: ['control', 'k'] as string[], // Ctrl+K
+  close: ['escape'] as string[],
+  help: ['shift', 'slash'] as string[], // Shift+/
+};
 
-  constructor() {
-    this.setupEventListeners();
-  }
+export function onKey(combo: KeyCombo, handler: () => void) {
+  if (typeof window === 'undefined') return () => {};
 
-  private setupEventListeners() {
-    document.addEventListener('keydown', this.handleKeyDown.bind(this));
-    document.addEventListener('keyup', this.handleKeyUp.bind(this));
-  }
+  const parts = Array.isArray(combo)
+    ? combo.map((k) => k.toLowerCase())
+    : combo.toLowerCase().split('+').map((k) => k.trim());
 
-  private handleKeyDown(e: KeyboardEvent) {
-    if (!this.isEnabled) return;
-
-    const key = e.key.toLowerCase();
-    const shortcut = this.shortcuts.get(key);
-
-    if (shortcut && this.matchesModifiers(e, shortcut)) {
-      e.preventDefault();
-      shortcut.action();
-    }
-  }
-
-  private handleKeyUp(e: KeyboardEvent) {
-    // Handle key up events if needed
-  }
-
-  private matchesModifiers(e: KeyboardEvent, shortcut: ShortcutConfig): boolean {
-    return (
-      (shortcut.ctrl || false) === e.ctrlKey &&
-      (shortcut.alt || false) === e.altKey &&
-      (shortcut.shift || false) === e.shiftKey &&
-      (shortcut.meta || false) === e.metaKey
+  const listener = (e: KeyboardEvent) => {
+    const need = {
+      meta: parts.includes('meta'),
+      ctrl: parts.includes('control') || parts.includes('ctrl'),
+      shift: parts.includes('shift'),
+      alt: parts.includes('alt') || parts.includes('option'),
+    };
+    const main = parts.find(
+      (k) => !['meta', 'control', 'ctrl', 'shift', 'alt', 'option'].includes(k),
     );
-  }
 
-  public register(shortcut: ShortcutConfig) {
-    this.shortcuts.set(shortcut.key.toLowerCase(), shortcut);
-  }
+    const ok =
+      (!need.meta || e.metaKey) &&
+      (!need.ctrl || e.ctrlKey) &&
+      (!need.shift || e.shiftKey) &&
+      (!need.alt || e.altKey) &&
+      (!main || e.key.toLowerCase() === main.toLowerCase());
 
-  public unregister(key: string) {
-    this.shortcuts.delete(key.toLowerCase());
-  }
+    if (ok) {
+      e.preventDefault();
+      handler();
+    }
+  };
 
-  public enable() {
-    this.isEnabled = true;
-  }
-
-  public disable() {
-    this.isEnabled = false;
-  }
-
-  public getShortcuts(): ShortcutConfig[] {
-    return Array.from(this.shortcuts.values());
-  }
+  window.addEventListener('keydown', listener);
+  return () => window.removeEventListener('keydown', listener);
 }
-
-// Global shortcut manager instance
-export const shortcutManager = new ShortcutManager();

@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { Metadata } from 'next';
 
 const EquityChart = dynamic(
-  () => import('../../../components/charts/EquityChart').then((m) => m.EquityChart),
+  () => import('@/components/charts/EquityChart').then((m) => m.EquityChart),
   {
     ssr: false,
     loading: () => (
@@ -42,7 +42,7 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
       </header>
 
       <section className="glass p-0" data-testid="chart-container">
-        <EquityChart data={[]} title={`Entity ${id} — Chart`} symbol={id} />
+        <EquityChart data={[]} title={`Entity ${id} — Chart`} />
       </section>
 
       <section className="glass p-6 space-y-2">
