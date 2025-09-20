@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AnimatedNavbar from '@/components/AnimatedNavbar';
 import CommandPalette from '@/components/CommandPalette';
-import ToastRail from '@/components/ToastRail';
+import { ToastViewport } from '@/lib/toast/ToastService';
 import Providers from './providers';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -25,7 +25,7 @@ export default function RootLayout({
           <AnimatedNavbar />
           <CommandPalette />
           <main className="min-h-[calc(100vh-56px)]">{children}</main>
-          <ToastRail />
+          <ToastViewport />
         </Providers>
       </body>
     </html>

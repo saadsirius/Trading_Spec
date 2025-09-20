@@ -1,28 +1,110 @@
 /**
  * File: app/trading/components/OrderEntry.tsx
- * Purpose: Order entry form with validation, preview, and risk controls
- * Key dependencies: React, TailwindCSS, zod (validation), zustand
- * Learning Angle: This demonstrates how to build a professional order entry system with
- * client-side validation, margin checks, and circuit breakers. Notice how we validate
- * all inputs before enabling submission and provide clear error messages.
+ * Notes:
+ * - Single zod schema with conditional checks via superRefine
+ * - Price sanity & circuit breaker checks (configurable)
+ * - Safer numeric inputs (coerce + guard empty -> undefined)
+ * - Submit only after preview was shown & still valid
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { useTradingStore } from '@/state/tradingStore';
 import { useNotificationStore } from '@/state/notificationStore';
 
-// Validation schema for order entry
+const CIRCUIT = {
+  maxOrderNotional: 250_000,            // hard cap on order value
+  maxQty: 100_000,                      // hard cap on quantity
+  maxLimitPctAway: 0.2,                 // 20% from last price
+  maxStopPctAway: 0.25,                 // 25% from last price
+};
+
 const OrderSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required'),
   side: z.enum(['buy', 'sell'], { required_error: 'Side is required' }),
-  qty: z.number().positive('Quantity must be positive').int('Quantity must be a whole number'),
+  qty: z.coerce.number().int('Quantity must be a whole number').positive('Quantity must be positive'),
   type: z.enum(['market', 'limit', 'stop', 'stop_limit'], { required_error: 'Order type is required' }),
   timeInForce: z.enum(['day', 'gtc'], { required_error: 'Time in force is required' }),
-  limitPrice: z.number().positive().optional(),
-  stopPrice: z.number().positive().optional(),
+  limitPrice: z.coerce.number().positive().optional().or(z.literal('').transform(() => undefined)),
+  stopPrice: z.coerce.number().positive().optional().or(z.literal('').transform(() => undefined)),
+  // context fields (not sent to API) — used for validation
+  lastPrice: z.number().positive().optional(),
+  availableQty: z.number().int().nonnegative().optional(), // for SELL qty check
+  buyingPower: z.number().nonnegative().optional(),        // for BUY notional check
+}).superRefine((data, ctx) => {
+  const { type, limitPrice, stopPrice, lastPrice, side, qty, buyingPower, availableQty } = data;
+
+  // Required fields based on type
+  if (type === 'limit' && !limitPrice) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['limitPrice'], message: 'Limit price is required for limit orders' });
+  }
+  if ((type === 'stop' || type === 'stop_limit') && !stopPrice) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['stopPrice'], message: 'Stop price is required for stop orders' });
+  }
+  if (type === 'stop_limit' && !limitPrice) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['limitPrice'], message: 'Limit price is required for stop limit orders' });
+  }
+
+  // Circuit breaker: max qty
+  if (qty > CIRCUIT.maxQty) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['qty'], message: `Quantity exceeds max (${CIRCUIT.maxQty.toLocaleString()})` });
+  }
+
+  // SELL: must have enough shares
+  if (side === 'sell' && typeof availableQty === 'number' && qty > availableQty) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['qty'], message: `Insufficient shares. Available: ${availableQty}` });
+  }
+
+  // BUY: notional within buying power (for limit/stop-limit we use limit price; for market use last/stop)
+  const referenceBuyPrice =
+    type === 'market' ? lastPrice :
+    type === 'limit' ? limitPrice :
+    type === 'stop' ? stopPrice :
+    type === 'stop_limit' ? limitPrice : undefined;
+
+  if (side === 'buy' && typeof referenceBuyPrice === 'number' && typeof buyingPower === 'number') {
+    const notional = referenceBuyPrice * qty;
+    if (notional > buyingPower) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['qty'],
+        message: `Insufficient buying power. Need $${notional.toLocaleString(undefined, { maximumFractionDigits: 2 })}, Available $${buyingPower.toLocaleString()}`,
+      });
+    }
+    if (notional > CIRCUIT.maxOrderNotional) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['qty'],
+        message: `Order value exceeds limit ($${CIRCUIT.maxOrderNotional.toLocaleString()})`,
+      });
+    }
+  }
+
+  // Price sanity vs lastPrice
+  if (typeof lastPrice === 'number') {
+    if (typeof limitPrice === 'number') {
+      const pct = Math.abs(limitPrice - lastPrice) / lastPrice;
+      if (pct > CIRCUIT.maxLimitPctAway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['limitPrice'],
+          message: `Limit is ${Math.round(pct * 100)}% from last ($${lastPrice.toFixed(2)})`,
+        });
+      }
+    }
+    if (typeof stopPrice === 'number') {
+      const pct = Math.abs(stopPrice - lastPrice) / lastPrice;
+      if (pct > CIRCUIT.maxStopPctAway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['stopPrice'],
+          message: `Stop is ${Math.round(pct * 100)}% from last ($${lastPrice.toFixed(2)})`,
+        });
+      }
+    }
+  }
 });
 
 type OrderFormData = z.infer<typeof OrderSchema>;
@@ -31,6 +113,7 @@ interface OrderEntryProps {
   symbol: string;
   account: any;
   onOrderSubmitted: () => void;
+  lastPrice?: number;       // pass quote.last or NBBO mid if you have it
 }
 
 interface OrderPreview {
@@ -46,15 +129,18 @@ interface OrderPreview {
   warnings: string[];
 }
 
-export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderEntryProps) {
+export default function OrderEntry({ symbol, account, onOrderSubmitted, lastPrice }: OrderEntryProps) {
   const [formData, setFormData] = useState<OrderFormData>({
-    symbol: symbol,
+    symbol,
     side: 'buy',
     qty: 1,
     type: 'limit',
     timeInForce: 'day',
     limitPrice: undefined,
     stopPrice: undefined,
+    lastPrice: lastPrice ?? undefined,
+    availableQty: 0,
+    buyingPower: 0,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -62,173 +148,142 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
   const [showPreview, setShowPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [preview, setPreview] = useState<OrderPreview | null>(null);
+  const [previewReady, setPreviewReady] = useState(false); // require preview before submit
 
   const { mode, getPositionBySymbol, getBuyingPower } = useTradingStore();
   const { addNotification } = useNotificationStore();
 
-  // Validate form data
+  // keep derived fields (availableQty/buyingPower/lastPrice) in form data for schema context
+  useEffect(() => {
+    const pos = getPositionBySymbol(symbol);
+    const availableQty = pos ? Number.parseInt(pos.qty, 10) || 0 : 0;
+    const buyingPower = Number(getBuyingPower()) || 0;
+    setFormData(prev => ({
+      ...prev,
+      symbol,
+      availableQty,
+      buyingPower,
+      lastPrice: lastPrice ?? prev.lastPrice,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, lastPrice, getPositionBySymbol, getBuyingPower]);
+
   const validateForm = useCallback(() => {
     try {
-      const validatedData = OrderSchema.parse(formData);
-      
-      // Additional business logic validation
-      const newErrors: Record<string, string> = {};
-
-      // Check if limit price is required for limit orders
-      if (formData.type === 'limit' && !formData.limitPrice) {
-        newErrors.limitPrice = 'Limit price is required for limit orders';
-      }
-
-      // Check if stop price is required for stop orders
-      if ((formData.type === 'stop' || formData.type === 'stop_limit') && !formData.stopPrice) {
-        newErrors.stopPrice = 'Stop price is required for stop orders';
-      }
-
-      // Check if limit price is required for stop_limit orders
-      if (formData.type === 'stop_limit' && !formData.limitPrice) {
-        newErrors.limitPrice = 'Limit price is required for stop limit orders';
-      }
-
-      // Check buying power for buy orders
-      if (formData.side === 'buy') {
-        const estimatedCost = (formData.limitPrice || 0) * formData.qty;
-        const buyingPower = getBuyingPower();
-        
-        if (estimatedCost > buyingPower) {
-          newErrors.qty = `Insufficient buying power. Available: $${buyingPower.toLocaleString()}`;
+      const parsed = OrderSchema.parse(formData);
+      setErrors({});
+      setIsValid(true);
+      return parsed;
+    } catch (e) {
+      const map: Record<string, string> = {};
+      if (e instanceof z.ZodError) {
+        for (const issue of e.issues) {
+          const key = issue.path[0] as string;
+          if (key) map[key] = issue.message;
         }
       }
-
-      // Check position for sell orders
-      if (formData.side === 'sell') {
-        const position = getPositionBySymbol(formData.symbol);
-        const availableQty = position ? parseInt(position.qty) : 0;
-        
-        if (formData.qty > availableQty) {
-          newErrors.qty = `Insufficient shares. Available: ${availableQty}`;
-        }
-      }
-
-      setErrors(newErrors);
-      setIsValid(Object.keys(newErrors).length === 0);
-      
-      return Object.keys(newErrors).length === 0;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0] as string] = err.message;
-          }
-        });
-        setErrors(newErrors);
-      }
+      setErrors(map);
       setIsValid(false);
-      return false;
+      return null;
     }
-  }, [formData, getBuyingPower, getPositionBySymbol]);
+  }, [formData]);
 
-  // Generate order preview
   const generatePreview = useCallback(() => {
-    if (!isValid) return;
+    const parsed = validateForm();
+    if (!parsed) {
+      setPreview(null);
+      setPreviewReady(false);
+      return;
+    }
 
-    const estimatedCost = (formData.limitPrice || 0) * formData.qty;
-    const marginImpact = formData.side === 'buy' ? estimatedCost : 0;
-    
+    // choose pricing for estimated cost
+    const refPrice =
+      parsed.type === 'market'
+        ? parsed.lastPrice ?? 0
+        : parsed.type === 'limit'
+        ? parsed.limitPrice ?? 0
+        : parsed.type === 'stop'
+        ? parsed.stopPrice ?? 0
+        : parsed.limitPrice ?? 0;
+
+    const estimatedCost = (refPrice || 0) * parsed.qty;
+    const marginImpact = parsed.side === 'buy' ? estimatedCost : 0;
+
     const warnings: string[] = [];
-    
-    // Add warnings based on order type and market conditions
-    if (formData.type === 'market') {
-      warnings.push('Market orders execute immediately at current market price');
-    }
-    
-    if (formData.timeInForce === 'gtc') {
-      warnings.push('Good-til-cancelled orders remain active until filled or cancelled');
-    }
-
-    if (mode === 'live') {
-      warnings.push('⚠️ LIVE TRADING MODE - This will execute with real money');
-    }
+    if (parsed.type === 'market') warnings.push('Market orders execute at the current market price and may experience slippage.');
+    if (parsed.timeInForce === 'gtc') warnings.push('GTC orders remain active until filled or canceled.');
+    if (mode === 'live') warnings.push('⚠️ LIVE TRADING MODE — orders execute with real funds.');
+    if (!parsed.lastPrice) warnings.push('No reference price available; preview may be less accurate.');
 
     setPreview({
-      symbol: formData.symbol,
-      side: formData.side,
-      qty: formData.qty,
-      type: formData.type,
-      timeInForce: formData.timeInForce,
-      limitPrice: formData.limitPrice,
-      stopPrice: formData.stopPrice,
+      symbol: parsed.symbol,
+      side: parsed.side,
+      qty: parsed.qty,
+      type: parsed.type,
+      timeInForce: parsed.timeInForce,
+      limitPrice: parsed.limitPrice,
+      stopPrice: parsed.stopPrice,
       estimatedCost,
       marginImpact,
       warnings,
     });
-  }, [formData, isValid, mode]);
+    setPreviewReady(true);
+  }, [mode, validateForm]);
 
-  // Validate form when data changes
+  // re-validate and re-preview on changes
   useEffect(() => {
+    setPreviewReady(false);
     validateForm();
-  }, [validateForm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData]);
 
-  // Generate preview when form is valid
-  useEffect(() => {
-    if (isValid) {
-      generatePreview();
-    }
-  }, [isValid, generatePreview]);
-
-  // Update symbol when prop changes
-  useEffect(() => {
-    setFormData(prev => ({ ...prev, symbol }));
-  }, [symbol]);
-
-  const handleInputChange = (field: keyof OrderFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: keyof OrderFormData, value: unknown) => {
+    setFormData(prev => ({ ...prev, [field]: value as any }));
   };
 
   const handleSubmit = async () => {
-    if (!isValid || !preview) return;
-
+    if (!isValid || !preview || !previewReady) return;
     setIsSubmitting(true);
-    
+
     try {
-      // Generate client order ID for idempotency
-      const clientOrderId = `ui-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      const orderPayload = {
-        symbol: formData.symbol,
-        qty: formData.qty.toString(),
+      const clientOrderId = `ui-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+      const orderPayload: Record<string, any> = {
+        symbol: formData.symbol.trim().toUpperCase(),
+        qty: String(formData.qty),
         side: formData.side,
         type: formData.type,
         time_in_force: formData.timeInForce,
         client_order_id: clientOrderId,
-        ...(formData.limitPrice && { limit_price: formData.limitPrice.toString() }),
-        ...(formData.stopPrice && { stop_price: formData.stopPrice.toString() }),
       };
+      if (formData.limitPrice) orderPayload.limit_price = String(formData.limitPrice);
+      if (formData.stopPrice) orderPayload.stop_price = String(formData.stopPrice);
 
-      const response = await fetch('/api/orders', {
+      const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to submit order');
+      if (!res.ok) {
+        let message = 'Failed to submit order';
+        try {
+          const e = await res.json();
+          message = e.message || message;
+        } catch {}
+        throw new Error(message);
       }
 
-      const result = await response.json();
-      
-      // Show success notification
+      await res.json();
+
       addNotification({
         type: 'success',
         title: 'Order Submitted',
-        message: `${formData.side.toUpperCase()} ${formData.qty} ${formData.symbol} order submitted successfully`,
+        message: `${formData.side.toUpperCase()} ${formData.qty} ${formData.symbol} submitted`,
         symbol: formData.symbol,
       });
 
-      // Reset form
+      // reset price & qty but keep symbol/side/type/TIF
       setFormData(prev => ({
         ...prev,
         qty: 1,
@@ -236,17 +291,13 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
         stopPrice: undefined,
       }));
       setShowPreview(false);
-
-      // Refresh data
-      onOrderSubmitted();
-
+      setPreviewReady(false);
+      onOrderSubmitted?.();
     } catch (error: any) {
-      console.error('Order submission failed:', error);
-      
       addNotification({
         type: 'critical',
         title: 'Order Failed',
-        message: error.message || 'Failed to submit order',
+        message: error?.message ?? 'Failed to submit order',
         symbol: formData.symbol,
         persistent: true,
       });
@@ -255,22 +306,17 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
     }
   };
 
-  const getFieldError = (field: string) => {
-    return errors[field] ? (
-      <p className="text-red-400 text-xs mt-1">{errors[field]}</p>
-    ) : null;
-  };
+  const getFieldError = (field: keyof OrderFormData) =>
+    errors[field as string] ? <p className="text-red-400 text-xs mt-1">{errors[field as string]}</p> : null;
 
   return (
     <div className="ds-card p-4">
       <h3 className="text-lg font-semibold text-white mb-4">Order Entry</h3>
-      
+
       <div className="space-y-4">
         {/* Symbol */}
         <div>
-          <label htmlFor="symbol" className="block text-sm font-medium text-gray-300 mb-1">
-            Symbol
-          </label>
+          <label htmlFor="symbol" className="block text-sm font-medium text-gray-300 mb-1">Symbol</label>
           <input
             id="symbol"
             type="text"
@@ -278,6 +324,7 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
             onChange={(e) => handleInputChange('symbol', e.target.value.toUpperCase())}
             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Enter symbol"
+            autoComplete="off"
           />
           {getFieldError('symbol')}
         </div>
@@ -286,41 +333,38 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">Side</label>
           <div className="flex space-x-2">
-            <button
-              onClick={() => handleInputChange('side', 'buy')}
-              className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-                formData.side === 'buy'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Buy
-            </button>
-            <button
-              onClick={() => handleInputChange('side', 'sell')}
-              className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-                formData.side === 'sell'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Sell
-            </button>
+            {(['buy', 'sell'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => handleInputChange('side', s)}
+                className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+                  formData.side === s
+                    ? (s === 'buy' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white')
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+                type="button"
+              >
+                {s.toUpperCase()}
+              </button>
+            ))}
           </div>
           {getFieldError('side')}
         </div>
 
         {/* Quantity */}
         <div>
-          <label htmlFor="qty" className="block text-sm font-medium text-gray-300 mb-1">
-            Quantity
-          </label>
+          <label htmlFor="qty" className="block text-sm font-medium text-gray-300 mb-1">Quantity</label>
           <input
             id="qty"
             type="number"
-            min="1"
+            inputMode="numeric"
+            min={1}
+            step={1}
             value={formData.qty}
-            onChange={(e) => handleInputChange('qty', parseInt(e.target.value) || 1)}
+            onChange={(e) => {
+              const val = e.target.value === '' ? 1 : Math.max(1, Math.floor(Number(e.target.value)));
+              handleInputChange('qty', val);
+            }}
             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {getFieldError('qty')}
@@ -328,13 +372,11 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
 
         {/* Order Type */}
         <div>
-          <label htmlFor="type" className="block text-sm font-medium text-gray-300 mb-1">
-            Order Type
-          </label>
+          <label htmlFor="type" className="block text-sm font-medium text-gray-300 mb-1">Order Type</label>
           <select
             id="type"
             value={formData.type}
-            onChange={(e) => handleInputChange('type', e.target.value)}
+            onChange={(e) => handleInputChange('type', e.target.value as OrderFormData['type'])}
             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="market">Market</option>
@@ -348,18 +390,20 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
         {/* Limit Price */}
         {(formData.type === 'limit' || formData.type === 'stop_limit') && (
           <div>
-            <label htmlFor="limitPrice" className="block text-sm font-medium text-gray-300 mb-1">
-              Limit Price
-            </label>
+            <label htmlFor="limitPrice" className="block text-sm font-medium text-gray-300 mb-1">Limit Price</label>
             <input
               id="limitPrice"
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
-              value={formData.limitPrice || ''}
-              onChange={(e) => handleInputChange('limitPrice', parseFloat(e.target.value) || undefined)}
+              value={formData.limitPrice ?? ''}
+              onChange={(e) => {
+                const val = e.target.value === '' ? undefined : Math.max(0, Number(e.target.value));
+                handleInputChange('limitPrice', Number.isFinite(val as number) ? val : undefined);
+              }}
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter limit price"
+              placeholder={formData.lastPrice ? `≈ ${formData.lastPrice.toFixed(2)}` : 'Enter limit price'}
             />
             {getFieldError('limitPrice')}
           </div>
@@ -368,18 +412,20 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
         {/* Stop Price */}
         {(formData.type === 'stop' || formData.type === 'stop_limit') && (
           <div>
-            <label htmlFor="stopPrice" className="block text-sm font-medium text-gray-300 mb-1">
-              Stop Price
-            </label>
+            <label htmlFor="stopPrice" className="block text-sm font-medium text-gray-300 mb-1">Stop Price</label>
             <input
               id="stopPrice"
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
-              value={formData.stopPrice || ''}
-              onChange={(e) => handleInputChange('stopPrice', parseFloat(e.target.value) || undefined)}
+              value={formData.stopPrice ?? ''}
+              onChange={(e) => {
+                const val = e.target.value === '' ? undefined : Math.max(0, Number(e.target.value));
+                handleInputChange('stopPrice', Number.isFinite(val as number) ? val : undefined);
+              }}
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter stop price"
+              placeholder={formData.lastPrice ? `≈ ${formData.lastPrice.toFixed(2)}` : 'Enter stop price'}
             />
             {getFieldError('stopPrice')}
           </div>
@@ -387,13 +433,11 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
 
         {/* Time in Force */}
         <div>
-          <label htmlFor="timeInForce" className="block text-sm font-medium text-gray-300 mb-1">
-            Time in Force
-          </label>
+          <label htmlFor="timeInForce" className="block text-sm font-medium text-gray-300 mb-1">Time in Force</label>
           <select
             id="timeInForce"
             value={formData.timeInForce}
-            onChange={(e) => handleInputChange('timeInForce', e.target.value)}
+            onChange={(e) => handleInputChange('timeInForce', e.target.value as OrderFormData['timeInForce'])}
             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="day">Day</option>
@@ -402,79 +446,51 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
           {getFieldError('timeInForce')}
         </div>
 
-        {/* Preview Button */}
+        {/* Actions */}
         <button
-          onClick={() => setShowPreview(true)}
+          onClick={() => {
+            generatePreview();
+            setShowPreview(true);
+          }}
           disabled={!isValid}
           className="w-full py-2 px-4 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          type="button"
         >
           Preview Order
         </button>
 
-        {/* Submit Button */}
         <button
           onClick={handleSubmit}
-          disabled={!isValid || isSubmitting}
+          disabled={!isValid || isSubmitting || !previewReady}
           className="w-full py-2 px-4 bg-emerald-600 text-white rounded-md font-medium hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+          type="button"
         >
           {isSubmitting ? 'Submitting...' : 'Submit Order'}
         </button>
       </div>
 
-      {/* Order Preview Modal */}
+      {/* Modal */}
       {showPreview && preview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4">
             <h4 className="text-lg font-semibold text-white mb-4">Order Preview</h4>
-            
+
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Symbol:</span>
-                <span className="text-white">{preview.symbol}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Side:</span>
-                <span className={`font-medium ${preview.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {preview.side.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Quantity:</span>
-                <span className="text-white">{preview.qty}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Type:</span>
-                <span className="text-white">{preview.type}</span>
-              </div>
-              {preview.limitPrice && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Limit Price:</span>
-                  <span className="text-white">${preview.limitPrice.toFixed(2)}</span>
-                </div>
-              )}
-              {preview.stopPrice && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Stop Price:</span>
-                  <span className="text-white">${preview.stopPrice.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-gray-400">Time in Force:</span>
-                <span className="text-white">{preview.timeInForce}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Estimated Cost:</span>
-                <span className="text-white">${preview.estimatedCost.toFixed(2)}</span>
-              </div>
+              <Row label="Symbol" value={preview.symbol} />
+              <Row label="Side" value={<span className={preview.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}>{preview.side.toUpperCase()}</span>} />
+              <Row label="Quantity" value={preview.qty.toLocaleString()} />
+              <Row label="Type" value={preview.type} />
+              {typeof preview.limitPrice === 'number' && <Row label="Limit Price" value={`$${preview.limitPrice.toFixed(2)}`} />}
+              {typeof preview.stopPrice === 'number' && <Row label="Stop Price" value={`$${preview.stopPrice.toFixed(2)}`} />}
+              <Row label="Time in Force" value={preview.timeInForce.toUpperCase()} />
+              <Row label="Estimated Cost" value={`$${preview.estimatedCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
             </div>
 
             {preview.warnings.length > 0 && (
               <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded-md">
-                <h5 className="text-yellow-400 font-medium mb-2">Warnings:</h5>
+                <h5 className="text-yellow-400 font-medium mb-2">Warnings</h5>
                 <ul className="text-yellow-300 text-sm space-y-1">
-                  {preview.warnings.map((warning, index) => (
-                    <li key={index}>• {warning}</li>
-                  ))}
+                  {preview.warnings.map((w, i) => <li key={i}>• {w}</li>)}
                 </ul>
               </div>
             )}
@@ -483,6 +499,7 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
               <button
                 onClick={() => setShowPreview(false)}
                 className="flex-1 py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                type="button"
               >
                 Cancel
               </button>
@@ -492,6 +509,7 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
                   handleSubmit();
                 }}
                 className="flex-1 py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors"
+                type="button"
               >
                 Confirm Order
               </button>
@@ -499,6 +517,15 @@ export default function OrderEntry({ symbol, account, onOrderSubmitted }: OrderE
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-gray-400">{label}:</span>
+      <span className="text-white">{value}</span>
     </div>
   );
 }

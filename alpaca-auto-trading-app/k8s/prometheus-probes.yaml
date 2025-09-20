@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  selector: { matchLabels: { app: blackbox-exporter } }
+  namespaceSelector: { matchNames: ["monitoring"] }
+  endpoints:
+    - port: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: probe-alpaca-iq
+  namespace: monitoring
+spec:
+  jobName: "probe/alpaca-iq"
+  prober:
+    url: http://blackbox-exporter.monitoring.svc:9115
+  module: http_2xx
+  targets:
+    staticConfig:
+      static:
+        - https://alpaca-iq.example.com/healthz

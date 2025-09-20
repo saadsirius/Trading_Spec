@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: probe-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: blackbox
+      rules:
+        - alert: SyntheticProbeDown
+          expr: probe_success{job="probe/alpaca-iq"} == 0
+          for: 2m
+          labels: { severity: page }
+          annotations:
+            summary: "Synthetic check failing"
+            description: "Blackbox probe {{ $labels.instance }} is down."

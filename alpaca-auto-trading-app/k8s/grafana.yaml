@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: alpaca-iq
+  labels: { app: grafana }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: grafana } }
+  template:
+    metadata: { labels: { app: grafana } }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.2.0
+          ports: [{ containerPort: 3000 }]
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: alpaca-iq-secrets
+                  key: GRAFANA_ADMIN_PASS
+          volumeMounts:
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning
+      volumes:
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: provisioning
+          configMap:
+            name: grafana-provisioning
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: alpaca-iq
+spec:
+  selector: { app: grafana }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

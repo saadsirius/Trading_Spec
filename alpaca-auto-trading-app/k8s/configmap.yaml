@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alpaca-iq-config
+  namespace: alpaca-iq
+data:
+  NODE_ENV: "production"
+  BASE_URL: "https://app.example.com"
+  NEXT_TELEMETRY_DISABLED: "1"

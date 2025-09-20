@@ -1,562 +1,563 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { 
-  BarChart3, TrendingUp, TrendingDown, Target, 
-  Calendar, DollarSign, PieChart, Activity,
-  Settings, Bell, Star, Eye, Filter, CheckCircle
-} from "lucide-react";
-import GlassButton from "../components/GlassButton";
+/**
+ * MyDashboard (React Query edition)
+ * - Per-panel queries with independent refetch
+ * - SSR-safe (client-only), timeouts, mock fallbacks
+ * - Paper mode badge, tabs, KPIs, equity chart, watchlist, signals, trades
+ * - Test hooks via data-testid
+ */
 
-interface UserMetrics {
-  totalReturn: number;
-  totalReturnPercent: number;
-  winRate: number;
-  totalTrades: number;
-  avgWin: number;
-  avgLoss: number;
-  sharpeRatio: number;
-  maxDrawdown: number;
-  bestPerformer: {
-    symbol: string;
-    return: number;
-  };
-  worstPerformer: {
-    symbol: string;
-    return: number;
-  };
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+
+// ───────────────────────────────────────────────────────── Types
+type Mode = 'paper' | 'live';
+type SignalType = 'BUY' | 'SELL';
+interface Instrument {
+  id: string; symbol: string; name: string; type: string;
+  sector?: string; price: number; changePercent: number; sparkline?: number[];
+}
+interface Position {
+  id: string; symbol: string; side: 'long' | 'short'; qty: number;
+  avgPrice: number; marketValue: number; unrealizedPL: number;
+}
+interface Trade {
+  id: string; symbol: string; side: 'buy' | 'sell'; qty: number; price: number; ts: string;
+}
+interface PortfolioDay { date: string; totalValue: number; dayChange?: number; }
+interface Signal {
+  id: string; symbol: string; name?: string; signalType: SignalType;
+  strength: number; confidence: number; riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  currentPrice?: number; priceChange?: number; reasoning?: string[]; stopLoss?: number; takeProfit?: number;
 }
 
-interface CustomGoal {
-  id: string;
-  title: string;
-  target: number;
-  current: number;
-  deadline: string;
-  type: 'return' | 'trades' | 'winrate' | 'drawdown';
-}
+// ───────────────────────────────────────────────────────── Utils
+const fmtUsd = (n: number) =>
+  n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+const fmtPct = (n: number, d = 2) => `${n >= 0 ? '+' : ''}${n.toFixed(d)}%`;
 
-export default function UserDashboard() {
-  const userId = 'demo';
-  const [activeView, setActiveView] = useState<'overview' | 'performance' | 'goals' | 'customize'>('overview');
-  const [userMetrics, setUserMetrics] = useState<UserMetrics | null>(null);
-  const [customGoals, setCustomGoals] = useState<CustomGoal[]>([]);
-  const [watchlist, setWatchlist] = useState<any[]>([]);
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchUserData();
-  }, [userId]);
-
-  const fetchUserData = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate API calls - in real app these would be actual API endpoints
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock data for demonstration
-      setUserMetrics({
-        totalReturn: 15420.50,
-        totalReturnPercent: 23.4,
-        winRate: 68.5,
-        totalTrades: 127,
-        avgWin: 245.30,
-        avgLoss: -156.80,
-        sharpeRatio: 1.85,
-        maxDrawdown: -8.2,
-        bestPerformer: { symbol: 'NVDA', return: 45.6 },
-        worstPerformer: { symbol: 'TSLA', return: -12.3 }
-      });
-
-      setCustomGoals([
-        {
-          id: '1',
-          title: 'Monthly Return Target',
-          target: 15,
-          current: 23.4,
-          deadline: '2024-01-31',
-          type: 'return'
-        },
-        {
-          id: '2',
-          title: 'Win Rate Improvement',
-          target: 75,
-          current: 68.5,
-          deadline: '2024-02-15',
-          type: 'winrate'
-        },
-        {
-          id: '3',
-          title: 'Trade Volume Goal',
-          target: 150,
-          current: 127,
-          deadline: '2024-01-31',
-          type: 'trades'
-        }
-      ]);
-
-      setWatchlist([
-        { symbol: 'AAPL', name: 'Apple Inc.', price: 195.89, change: 2.34, alerts: 3 },
-        { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 142.56, change: -1.23, alerts: 1 },
-        { symbol: 'MSFT', name: 'Microsoft Corp.', price: 378.91, change: 0.87, alerts: 2 },
-        { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 156.78, change: 1.45, alerts: 0 }
-      ]);
-
-      setRecentActivity([
-        { type: 'trade', symbol: 'AAPL', action: 'BUY', quantity: 10, price: 195.50, time: '2 hours ago' },
-        { type: 'signal', symbol: 'NVDA', signal: 'BUY', confidence: 87, time: '4 hours ago' },
-        { type: 'alert', symbol: 'GOOGL', message: 'Price target reached', time: '6 hours ago' },
-        { type: 'goal', message: 'Monthly return target achieved!', time: '1 day ago' }
-      ]);
-
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary mx-auto mb-4"></div>
-          <p className="text-white/80">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
+async function fetchJSON<T>(url: string, timeout = 6000): Promise<T> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(tid);
   }
+}
+
+// ───────────────────────────────────────────────────────── Mocks (fallback)
+const mockInstruments: Instrument[] = [
+  { id: '1', symbol: 'AAPL', name: 'Apple Inc.', type: 'STOCK', price: 187.21, changePercent: 1.23, sparkline: [180,183,182,185,187] },
+  { id: '2', symbol: 'MSFT', name: 'Microsoft',   type: 'STOCK', price: 412.10, changePercent: -0.42, sparkline: [420,418,415,413,412] },
+  { id: '3', symbol: 'NVDA', name: 'NVIDIA',      type: 'STOCK', price: 816.32, changePercent: 2.14, sparkline: [790,800,805,810,816] },
+  { id: '4', symbol: 'TLT',  name: 'Treasury 20+',type: 'ETF',   price: 93.50,  changePercent: 0.35, sparkline: [92,92.3,92.9,93.2,93.5] },
+];
+
+const mockCurve: PortfolioDay[] = Array.from({ length: 30 }, (_, i, arr) => {
+  const base = 100_000, drift = i * 120, noise = Math.sin(i / 3) * 180;
+  const totalValue = Math.round(base + drift + noise);
+  const date = new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10);
+  const prev = i ? Math.round(base + (i - 1) * 120 + Math.sin((i - 1) / 3) * 180) : totalValue;
+  return { date, totalValue, dayChange: totalValue - prev };
+});
+
+const mockPositions: Position[] = [
+  { id: 'p1', symbol: 'AAPL', side: 'long', qty: 50, avgPrice: 175, marketValue: 9360.5, unrealizedPL: 612.5 },
+  { id: 'p2', symbol: 'NVDA', side: 'long', qty: 8,  avgPrice: 700, marketValue: 6530.56, unrealizedPL: 933.12 },
+];
+
+const mockTrades: Trade[] = [
+  { id: 't1', symbol: 'AAPL', side: 'buy',  qty: 20, price: 182.12, ts: new Date().toISOString() },
+  { id: 't2', symbol: 'NVDA', side: 'sell', qty: 4,  price: 812.00, ts: new Date(Date.now() - 3600000).toISOString() },
+  { id: 't3', symbol: 'MSFT', side: 'buy',  qty: 5,  price: 410.50, ts: new Date(Date.now() - 7200000).toISOString() },
+];
+
+const mockSignals: Signal[] = [
+  { id: 's1', symbol: 'AAPL', name: 'Apple',  signalType: 'BUY',  strength: 72, confidence: 64, riskLevel: 'LOW',    currentPrice: 187.21, priceChange: 1.23, reasoning: ['Golden cross','RSI 48→56'], stopLoss: 178.5, takeProfit: 196.0 },
+  { id: 's2', symbol: 'NVDA', name: 'NVIDIA', signalType: 'SELL', strength: 61, confidence: 58, riskLevel: 'MEDIUM', currentPrice: 816.32, priceChange: 2.14, reasoning: ['Overbought (RSI 72)'] },
+];
+
+// ───────────────────────────────────────────────────────── Queries
+function useDiscoverQuery() {
+  return useQuery({
+    queryKey: ['discover', { limit: 50 }],
+    queryFn: async () => {
+      try {
+        const res = await fetchJSON<{ instruments: Instrument[] }>('/api/discover?limit=50');
+        return res.instruments ?? mockInstruments;
+      } catch {
+        return mockInstruments;
+      }
+    },
+  });
+}
+
+function usePortfolioQuery(mode: Mode) {
+  return useQuery({
+    queryKey: ['portfolio', { userId: 'demo', mode }],
+    queryFn: async () => {
+      try {
+        const res = await fetchJSON<{ portfolioData: PortfolioDay[]; currentPositions?: Position[] }>(`/api/portfolio?userId=demo&mode=${mode}`);
+        return {
+          curve: res.portfolioData ?? mockCurve,
+          positions: res.currentPositions ?? mockPositions,
+        };
+      } catch {
+        return { curve: mockCurve, positions: mockPositions };
+      }
+    },
+  });
+}
+
+function useSignalsQuery() {
+  return useQuery({
+    queryKey: ['signals', { userId: 'demo', limit: 10 }],
+    queryFn: async () => {
+      try {
+        const res = await fetchJSON<{ signals: Signal[] }>('/api/signals?userId=demo&limit=10');
+        return res.signals ?? mockSignals;
+      } catch {
+        return mockSignals;
+      }
+    },
+  });
+}
+
+function useTradesQuery() {
+  return useQuery({
+    queryKey: ['trades', { limit: 20 }],
+    queryFn: async () => {
+      try {
+        const res = await fetchJSON<Trade[]>('/api/trades?limit=20');
+        return Array.isArray(res) ? res : mockTrades;
+      } catch {
+        return mockTrades;
+      }
+    },
+  });
+}
+
+// ───────────────────────────────────────────────────────── Page
+export default function MyDashboardRQ() {
+  const [mode] = useState<Mode>('paper'); // force paper
+  const [tab, setTab] = useState<'overview'|'portfolio'|'signals'|'activity'>('overview');
+  const qc = useQueryClient();
+
+  const { data: instruments = [], isLoading: loadingDiscover, refetch: refetchDiscover, isFetching: fetchingDiscover } = useDiscoverQuery();
+  const { data: portfolio, isLoading: loadingPortfolio, refetch: refetchPortfolio, isFetching: fetchingPortfolio } = usePortfolioQuery(mode);
+  const { data: signals = [], isLoading: loadingSignals, refetch: refetchSignals, isFetching: fetchingSignals } = useSignalsQuery();
+  const { data: trades = [], isLoading: loadingTrades, refetch: refetchTrades, isFetching: fetchingTrades } = useTradesQuery();
+
+  const curve = portfolio?.curve ?? [];
+  const positions = portfolio?.positions ?? [];
+
+  const equityNow = curve.length ? curve[curve.length - 1].totalValue : 0;
+  const dayChange = curve.length > 1 ? equityNow - curve[curve.length - 2].totalValue : 0;
+  const dayChangePct = curve.length > 1 && curve[curve.length - 2].totalValue > 0
+    ? (dayChange / curve[curve.length - 2].totalValue) * 100
+    : 0;
+
+  const loadingAny = loadingDiscover || loadingPortfolio || loadingSignals || loadingTrades;
 
   return (
-    <div className="min-h-screen bg-ink">
-      {/* Personal Header */}
-      <header className="glass border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Your Trading Journey</h1>
-              <p className="text-white/80">Track your progress, set goals, and optimize your strategy</p>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <GlassButton variant="secondary" size="sm">
-                <Bell className="w-4 h-4 mr-2" />
-                Notifications
-              </GlassButton>
-              <GlassButton size="sm">
-                <Settings className="w-4 h-4 mr-2" />
-                Customize
-              </GlassButton>
-            </div>
+    <div className="min-h-screen bg-gray-950 text-white" data-testid="my-dashboard">
+      {/* Header */}
+      <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-gray-950/70 border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">My Dashboard</h1>
+            <span className={clsx(
+              'px-3 py-1 rounded-full text-xs font-semibold',
+              mode === 'paper' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'
+            )}>
+              {mode === 'paper' ? 'Paper Trading' : 'Live'}
+            </span>
+          </div>
+
+          {/* Global refresh: clears & refetches all */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                await Promise.all([
+                  refetchDiscover(),
+                  refetchPortfolio(),
+                  refetchSignals(),
+                  refetchTrades(),
+                ]);
+              }}
+              className="px-3 py-2 text-sm rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+            >
+              {loadingAny ? 'Refreshing…' : 'Refresh All'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="max-w-7xl mx-auto px-6 pb-3">
+          <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+            {(['overview','portfolio','signals','activity'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={clsx(
+                  'px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors',
+                  tab === t ? 'bg-cyan-500/20 text-cyan-300' : 'text-white/70 hover:text-white hover:bg-white/10'
+                )}
+              >
+                {t}
+              </button>
+            ))}
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
-      <div className="max-w-7xl mx-auto px-6 py-4">
-        <div className="flex items-center space-x-1 bg-white/5 rounded-xl p-1">
-          {[
-            { id: 'overview', label: 'Overview', icon: BarChart3 },
-            { id: 'performance', label: 'Performance', icon: TrendingUp },
-            { id: 'goals', label: 'Goals', icon: Target },
-            { id: 'customize', label: 'Customize', icon: Settings },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveView(id as any)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeView === id
-                  ? 'bg-secondary/20 text-secondary'
-                  : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Body */}
+      <main className="max-w-7xl mx-auto px-6 py-6">
+        {tab === 'overview' && (
+          <section className="space-y-6" data-testid="overview-tab">
+            {/* KPIs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <KpiCard label="Equity" value={fmtUsd(equityNow)} />
+              <KpiCard label="Day Change" value={`${fmtUsd(dayChange)} (${fmtPct(dayChangePct)})`} valueClass={dayChange >= 0 ? 'text-emerald-300' : 'text-red-300'} />
+              <KpiCard label="Open Positions" value={String(positions.length)} />
+              <KpiCard label="Signals (24h)" value={String(signals.length)} />
+            </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 pb-8">
-        <motion.div
-          key={activeView}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          {activeView === 'overview' && <OverviewView metrics={userMetrics} watchlist={watchlist} recentActivity={recentActivity} />}
-          {activeView === 'performance' && <PerformanceView metrics={userMetrics} />}
-          {activeView === 'goals' && <GoalsView goals={customGoals} onUpdateGoals={setCustomGoals} />}
-          {activeView === 'customize' && <CustomizeView />}
-        </motion.div>
+            {/* Equity + Watchlist */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 glass">
+                <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Equity (30D)</h3>
+                  <button
+                    onClick={() => refetchPortfolio()}
+                    className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                  >
+                    {fetchingPortfolio ? 'Refreshing…' : 'Refetch'}
+                  </button>
+                </div>
+                <div className="p-5">
+                  {loadingPortfolio ? (
+                    <div className="h-48 bg-white/5 rounded" />
+                  ) : (
+                    <MiniAreaChart data={curve.map(d => d.totalValue)} />
+                  )}
+                </div>
+              </div>
+
+              <div className="glass">
+                <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Watchlist</h3>
+                  <button
+                    onClick={() => refetchDiscover()}
+                    className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                  >
+                    {fetchingDiscover ? 'Refreshing…' : 'Refetch'}
+                  </button>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {(instruments ?? []).slice(0, 8).map(ins => (
+                    <div key={ins.id} className="p-4 flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold">{ins.symbol}</div>
+                        <div className="text-xs text-white/60">{ins.name}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <MiniSparkline data={ins.sparkline ?? []} />
+                        <div className="text-right">
+                          <div className="text-sm">{fmtUsd(ins.price)}</div>
+                          <div className={clsx('text-xs', ins.changePercent >= 0 ? 'text-emerald-300' : 'text-red-300')}>
+                            {fmtPct(ins.changePercent)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!instruments?.length && <div className="p-4 text-sm text-white/60">No items</div>}
+                </div>
+              </div>
+            </div>
+
+            {/* Signals + Activity */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass">
+                <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">AI Signals</h3>
+                  <button
+                    onClick={() => refetchSignals()}
+                    className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                  >
+                    {fetchingSignals ? 'Refreshing…' : 'Refetch'}
+                  </button>
+                </div>
+                <SignalsList signals={signals ?? []} loading={loadingSignals} />
+              </div>
+
+              <div className="glass">
+                <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Recent Activity</h3>
+                  <button
+                    onClick={() => refetchTrades()}
+                    className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                  >
+                    {fetchingTrades ? 'Refreshing…' : 'Refetch'}
+                  </button>
+                </div>
+                <TradesTable trades={trades ?? []} loading={loadingTrades} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {tab === 'portfolio' && (
+          <section className="space-y-6" data-testid="portfolio-tab">
+            <div className="glass">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Open Positions</h3>
+                <button
+                  onClick={() => refetchPortfolio()}
+                  className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                >
+                  {fetchingPortfolio ? 'Refreshing…' : 'Refetch'}
+                </button>
+              </div>
+              <PositionsTable positions={positions} loading={loadingPortfolio} />
+            </div>
+          </section>
+        )}
+
+        {tab === 'signals' && (
+          <section className="space-y-6" data-testid="signals-tab">
+            <div className="glass">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">AI Signals</h3>
+                <button
+                  onClick={() => refetchSignals()}
+                  className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                >
+                  {fetchingSignals ? 'Refreshing…' : 'Refetch'}
+                </button>
+              </div>
+              <SignalsList signals={signals ?? []} loading={loadingSignals} />
+            </div>
+          </section>
+        )}
+
+        {tab === 'activity' && (
+          <section className="space-y-6" data-testid="activity-tab">
+            <div className="glass">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Recent Trades</h3>
+                <button
+                  onClick={() => refetchTrades()}
+                  className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10 hover:bg-white/15"
+                >
+                  {fetchingTrades ? 'Refreshing…' : 'Refetch'}
+                </button>
+              </div>
+              <TradesTable trades={trades ?? []} loading={loadingTrades} />
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
 }
 
-// Overview View Component
-function OverviewView({ metrics, watchlist, recentActivity }: { 
-  metrics: UserMetrics | null; 
-  watchlist: any[]; 
-  recentActivity: any[]; 
-}) {
-  if (!metrics) return null;
-
+// ───────────────────────────────────────────────────────── UI bits
+function KpiCard({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="space-y-6">
-      {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Total Return</h3>
-            <DollarSign className="w-5 h-5 text-support" />
-          </div>
-          <div className={`text-3xl font-bold ${metrics.totalReturn >= 0 ? 'text-support' : 'text-danger-400'}`}>
-            ${metrics.totalReturn.toLocaleString()}
-          </div>
-          <div className={`text-sm ${metrics.totalReturnPercent >= 0 ? 'text-support' : 'text-danger-400'}`}>
-            {metrics.totalReturnPercent >= 0 ? '+' : ''}{metrics.totalReturnPercent.toFixed(1)}%
-          </div>
-        </div>
-
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Win Rate</h3>
-            <Target className="w-5 h-5 text-secondary" />
-          </div>
-          <div className="text-3xl font-bold text-white">{metrics.winRate.toFixed(1)}%</div>
-          <div className="text-sm text-white/60">{metrics.totalTrades} total trades</div>
-        </div>
-
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Sharpe Ratio</h3>
-            <TrendingUp className="w-5 h-5 text-primary" />
-          </div>
-          <div className="text-3xl font-bold text-white">{metrics.sharpeRatio.toFixed(2)}</div>
-          <div className="text-sm text-white/60">Risk-adjusted returns</div>
-        </div>
-
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Max Drawdown</h3>
-            <TrendingDown className="w-5 h-5 text-accent" />
-          </div>
-          <div className="text-3xl font-bold text-danger-400">{metrics.maxDrawdown.toFixed(1)}%</div>
-          <div className="text-sm text-white/60">Peak to trough</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Watchlist */}
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Your Watchlist</h3>
-            <Star className="w-5 h-5 text-accent" />
-          </div>
-          <div className="space-y-3">
-            {watchlist.map((item) => (
-              <div key={item.symbol} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">{item.symbol}</div>
-                  <div className="text-sm text-white/60">{item.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-white font-medium">${item.price}</div>
-                  <div className={`text-sm ${item.change >= 0 ? 'text-support' : 'text-danger-400'}`}>
-                    {item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%
-                  </div>
-                </div>
-                {item.alerts > 0 && (
-                  <div className="ml-2">
-                    <span className="px-2 py-1 bg-accent/20 text-accent text-xs rounded-full">
-                      {item.alerts}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="glass p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Recent Activity</h3>
-            <Activity className="w-5 h-5 text-secondary" />
-          </div>
-          <div className="space-y-3">
-            {recentActivity.map((activity, index) => (
-              <div key={index} className="flex items-center space-x-3 p-3 bg-white/5 rounded-lg">
-                <div className={`w-2 h-2 rounded-full ${
-                  activity.type === 'trade' ? 'bg-support' :
-                  activity.type === 'signal' ? 'bg-secondary' :
-                  activity.type === 'alert' ? 'bg-accent' : 'bg-primary'
-                }`}></div>
-                <div className="flex-1">
-                  <div className="text-white text-sm">
-                    {activity.type === 'trade' && `${activity.action} ${activity.quantity} ${activity.symbol} @ $${activity.price}`}
-                    {activity.type === 'signal' && `${activity.symbol} ${activity.signal} signal (${activity.confidence}% confidence)`}
-                    {activity.type === 'alert' && `${activity.symbol}: ${activity.message}`}
-                    {activity.type === 'goal' && activity.message}
-                  </div>
-                  <div className="text-xs text-white/60">{activity.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="glass p-5">
+      <div className="text-sm text-white/60">{label}</div>
+      <div className={clsx('text-2xl font-semibold mt-1', valueClass)}>{value}</div>
     </div>
   );
 }
 
-// Performance View Component
-function PerformanceView({ metrics }: { metrics: UserMetrics | null }) {
-  if (!metrics) return null;
+function MiniSparkline({ data }: { data: number[] }) {
+  if (!data || data.length < 2) return <div className="w-[60px] h-4 bg-white/10 rounded" />;
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = Math.max(1e-6, max - min);
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * 60;
+    const y = 16 - ((v - min) / range) * 16;
+    return `${x},${y}`;
+  }).join(' ');
+  const up = data[data.length - 1] >= data[0];
+  return (
+    <svg width="60" height="16" viewBox="0 0 60 16" className="opacity-90">
+      <polyline fill="none" stroke={up ? '#34D399' : '#F87171'} strokeWidth="2" points={pts} />
+    </svg>
+  );
+}
+
+function MiniAreaChart({ data }: { data: number[] }) {
+  if (!data?.length) {
+    return <div data-testid="chart-container" className="h-48 bg-white/5 rounded-lg" />;
+  }
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = Math.max(1e-6, max - min);
+  const width = 640, height = 180;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+  const area = `0,${height} ${pts} ${width},${height}`;
+  return (
+    <svg data-testid="chart-container" className="w-full h-48" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke="#22D3EE" strokeWidth="2" />
+      <polygon points={area} fill="rgba(34,211,238,0.15)" />
+    </svg>
+  );
+}
+
+function SignalsList({ signals, loading }: { signals: Signal[]; loading: boolean }) {
+  if (loading) return <div className="p-5 text-sm text-white/60">Loading signals…</div>;
+  if (!signals.length) return <div className="p-5 text-sm text-white/60">No signals</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="glass p-6">
-        <h3 className="text-xl font-semibold text-white mb-6">Performance Analysis</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Trade Statistics */}
-          <div>
-            <h4 className="text-lg font-medium text-white mb-4">Trade Statistics</h4>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Total Trades</span>
-                <span className="text-white font-medium">{metrics.totalTrades}</span>
+    <div className="divide-y divide-white/5">
+      {signals.map(s => (
+        <div key={s.id} className="p-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <span className={clsx(
+              'px-3 py-1 rounded-full text-xs font-semibold',
+              s.signalType === 'BUY' ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300'
+            )}>
+              {s.signalType}
+            </span>
+            <div>
+              <div className="font-semibold">{s.symbol}</div>
+              <div className="text-xs text-white/60">{s.name ?? '—'}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <Stat label="Strength" value={`${s.strength}%`} />
+            <Stat label="Confidence" value={`${s.confidence}%`} />
+            <Stat label="Risk" value={s.riskLevel} valueClass={
+              s.riskLevel === 'LOW' ? 'text-emerald-300' : s.riskLevel === 'MEDIUM' ? 'text-amber-300' : 'text-red-300'
+            } />
+          </div>
+          <div className="text-right">
+            <div className="text-sm">{s.currentPrice ? fmtUsd(s.currentPrice) : '—'}</div>
+            {typeof s.priceChange === 'number' && (
+              <div className={clsx('text-xs', s.priceChange >= 0 ? 'text-emerald-300' : 'text-red-300')}>
+                {fmtPct(s.priceChange)}
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Win Rate</span>
-                <span className="text-support font-medium">{metrics.winRate.toFixed(1)}%</span>
+            )}
+          </div>
+          {s.reasoning?.length ? (
+            <div className="w-full">
+              <div className="mt-3 flex flex-wrap gap-2">
+                {s.reasoning.map((r, i) => (
+                  <span key={i} className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded">{r}</span>
+                ))}
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Average Win</span>
-                <span className="text-support font-medium">${metrics.avgWin.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Average Loss</span>
-                <span className="text-danger-400 font-medium">${metrics.avgLoss.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Profit Factor</span>
-                <span className="text-white font-medium">
-                  {(Math.abs(metrics.avgWin * metrics.winRate / 100) / Math.abs(metrics.avgLoss * (100 - metrics.winRate) / 100)).toFixed(2)}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TradesTable({ trades, loading }: { trades: Trade[]; loading: boolean }) {
+  if (loading) return <div className="p-5 text-sm text-white/60">Loading trades…</div>;
+  if (!trades.length) return <div className="p-5 text-sm text-white/60">No recent trades</div>;
+
+  return (
+    <div className="p-5 overflow-x-auto">
+      <table className="min-w-full">
+        <thead>
+          <tr className="text-left text-sm text-white/70 border-b border-white/10">
+            <th className="py-2 pr-4">Time</th>
+            <th className="py-2 pr-4">Symbol</th>
+            <th className="py-2 pr-4">Side</th>
+            <th className="py-2 pr-4 text-right">Qty</th>
+            <th className="py-2 pr-0 text-right">Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map(t => (
+            <tr key={t.id} className="border-b border-white/5 hover:bg-white/5">
+              <td className="py-3 pr-4 text-sm">
+                {new Date(t.ts).toLocaleDateString()} {new Date(t.ts).toLocaleTimeString()}
+              </td>
+              <td className="py-3 pr-4 font-semibold">{t.symbol}</td>
+              <td className="py-3 pr-4">
+                <span className={clsx(
+                  'px-2 py-1 rounded text-xs font-semibold',
+                  t.side === 'buy' ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300'
+                )}>
+                  {t.side.toUpperCase()}
                 </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Risk Metrics */}
-          <div>
-            <h4 className="text-lg font-medium text-white mb-4">Risk Metrics</h4>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Sharpe Ratio</span>
-                <span className="text-primary font-medium">{metrics.sharpeRatio.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Max Drawdown</span>
-                <span className="text-danger-400 font-medium">{metrics.maxDrawdown.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Best Performer</span>
-                <span className="text-support font-medium">{metrics.bestPerformer.symbol} (+{metrics.bestPerformer.return.toFixed(1)}%)</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-white/80">Worst Performer</span>
-                <span className="text-danger-400 font-medium">{metrics.worstPerformer.symbol} ({metrics.worstPerformer.return.toFixed(1)}%)</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+              </td>
+              <td className="py-3 pr-4 text-right">{t.qty}</td>
+              <td className="py-3 pr-0 text-right">{fmtUsd(t.price)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-// Goals View Component
-function GoalsView({ goals, onUpdateGoals }: { 
-  goals: CustomGoal[]; 
-  onUpdateGoals: (goals: CustomGoal[]) => void; 
-}) {
-  const [newGoal, setNewGoal] = useState({
-    title: '',
-    target: 0,
-    deadline: '',
-    type: 'return' as const
-  });
-
-  const addGoal = () => {
-    if (newGoal.title && newGoal.target > 0 && newGoal.deadline) {
-      const goal: CustomGoal = {
-        id: Date.now().toString(),
-        ...newGoal,
-        current: 0
-      };
-      onUpdateGoals([...goals, goal]);
-      setNewGoal({ title: '', target: 0, deadline: '', type: 'return' });
-    }
-  };
-
-  const getProgressPercentage = (goal: CustomGoal) => {
-    return Math.min((goal.current / goal.target) * 100, 100);
-  };
+function PositionsTable({ positions, loading }: { positions: Position[]; loading: boolean }) {
+  if (loading) return <div className="p-5 text-sm text-white/60">Loading positions…</div>;
+  if (!positions.length) return <div className="p-5 text-sm text-white/60">No open positions</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Add New Goal */}
-      <div className="glass p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Add New Goal</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input
-            type="text"
-            placeholder="Goal title"
-            value={newGoal.title}
-            onChange={(e) => setNewGoal(prev => ({ ...prev, title: e.target.value }))}
-            className="bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/40"
-          />
-          <input
-            type="number"
-            placeholder="Target value"
-            value={newGoal.target || ''}
-            onChange={(e) => setNewGoal(prev => ({ ...prev, target: parseFloat(e.target.value) || 0 }))}
-            className="bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/40"
-          />
-          <input
-            type="date"
-            value={newGoal.deadline}
-            onChange={(e) => setNewGoal(prev => ({ ...prev, deadline: e.target.value }))}
-            className="bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-          />
-          <GlassButton onClick={addGoal}>
-            Add Goal
-          </GlassButton>
-        </div>
-      </div>
-
-      {/* Goals List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {goals.map((goal) => {
-          const progress = getProgressPercentage(goal);
-          const isCompleted = progress >= 100;
-          
-          return (
-            <div key={goal.id} className="glass p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-medium text-white">{goal.title}</h4>
-                {isCompleted && <CheckCircle className="w-5 h-5 text-support" />}
-              </div>
-              
-              <div className="mb-4">
-                <div className="flex justify-between text-sm text-white/80 mb-2">
-                  <span>{goal.current.toFixed(1)} / {goal.target.toFixed(1)}</span>
-                  <span>{progress.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-white/10 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all duration-500 ${
-                      isCompleted ? 'bg-support' : 'bg-secondary'
-                    }`}
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-              </div>
-              
-              <div className="flex justify-between text-sm text-white/60">
-                <span>Deadline: {new Date(goal.deadline).toLocaleDateString()}</span>
-                <span className="capitalize">{goal.type}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="p-5 overflow-x-auto">
+      <table className="min-w-full">
+        <thead>
+          <tr className="text-left text-sm text-white/70 border-b border-white/10">
+            <th className="py-2 pr-4">Symbol</th>
+            <th className="py-2 pr-4">Side</th>
+            <th className="py-2 pr-4 text-right">Qty</th>
+            <th className="py-2 pr-4 text-right">Avg Price</th>
+            <th className="py-2 pr-4 text-right">Market Value</th>
+            <th className="py-2 pr-0 text-right">Unrealized P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {positions.map(p => (
+            <tr key={p.id} className="border-b border-white/5 hover:bg-white/5">
+              <td className="py-3 pr-4 font-semibold">{p.symbol}</td>
+              <td className="py-3 pr-4">
+                <span className={clsx(
+                  'px-2 py-1 rounded text-xs font-semibold',
+                  p.side === 'long' ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300'
+                )}>
+                  {p.side.toUpperCase()}
+                </span>
+              </td>
+              <td className="py-3 pr-4 text-right">{p.qty}</td>
+              <td className="py-3 pr-4 text-right">{fmtUsd(p.avgPrice)}</td>
+              <td className="py-3 pr-4 text-right">{fmtUsd(p.marketValue)}</td>
+              <td className={clsx('py-3 pr-0 text-right font-semibold', p.unrealizedPL >= 0 ? 'text-emerald-300' : 'text-red-300')}>
+                {fmtUsd(p.unrealizedPL)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-// Customize View Component
-function CustomizeView() {
+function Stat({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="space-y-6">
-      <div className="glass p-6">
-        <h3 className="text-xl font-semibold text-white mb-6">Customize Your Dashboard</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Display Preferences */}
-          <div>
-            <h4 className="text-lg font-medium text-white mb-4">Display Preferences</h4>
-            <div className="space-y-4">
-              <label className="flex items-center">
-                <input type="checkbox" className="mr-3" defaultChecked />
-                <span className="text-white/80">Show sparklines</span>
-              </label>
-              <label className="flex items-center">
-                <input type="checkbox" className="mr-3" defaultChecked />
-                <span className="text-white/80">Show AI confidence scores</span>
-              </label>
-              <label className="flex items-center">
-                <input type="checkbox" className="mr-3" />
-                <span className="text-white/80">Enable sound notifications</span>
-              </label>
-              <label className="flex items-center">
-                <input type="checkbox" className="mr-3" defaultChecked />
-                <span className="text-white/80">Show risk levels</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Trading Preferences */}
-          <div>
-            <h4 className="text-lg font-medium text-white mb-4">Trading Preferences</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-white/80 mb-2">Default Position Size (%)</label>
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="10" 
-                  defaultValue="5" 
-                  className="w-full"
-                />
-                <div className="text-sm text-white/60 mt-1">5% of portfolio</div>
-              </div>
-              <div>
-                <label className="block text-white/80 mb-2">Risk Tolerance</label>
-                <select className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white">
-                  <option>Conservative</option>
-                  <option selected>Moderate</option>
-                  <option>Aggressive</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-white/80 mb-2">Auto-trade Confidence Threshold</label>
-                <input 
-                  type="range" 
-                  min="50" 
-                  max="95" 
-                  defaultValue="80" 
-                  className="w-full"
-                />
-                <div className="text-sm text-white/60 mt-1">80% confidence</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="mt-8 pt-6 border-t border-white/10">
-          <GlassButton>
-            Save Preferences
-          </GlassButton>
-        </div>
-      </div>
+    <div className="text-center">
+      <div className="text-xs text-white/60">{label}</div>
+      <div className={clsx('text-sm font-semibold', valueClass)}>{value}</div>
     </div>
   );
 }
+
+// Tailwind helper: add in your CSS if not already present
+// .glass { @apply bg-white/5 border border-white/10 rounded-xl; }

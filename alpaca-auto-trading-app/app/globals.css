@@ -23,6 +23,12 @@
   --font-wght: 500;
   --font-wdth: 100; /* 75–125 */
   --font-slnt: 0;   /* -10..0 */
+
+  /* Tailwind color variables for WindBackground component */
+  --tw-color-primary: #60a5fa;
+  --tw-color-secondary: #a78bfa;
+  --tw-color-accent: #22d3ee;
+  --tw-color-support: #34d399;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -376,6 +382,11 @@ body {
 :focus-visible { 
   outline: 2px solid #3b82f6; 
   outline-offset: 2px; 
+}
+
+/* Glass morphism effect */
+.glass {
+  @apply bg-white/5 border border-white/10 rounded-xl;
 }
 
 /* Responsive utilities */

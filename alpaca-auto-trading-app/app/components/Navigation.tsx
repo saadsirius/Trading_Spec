@@ -1,10 +1,29 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// File: components/navigation/Navigation.tsx
+// Description: Responsive, accessible navigation bar for a paper-trading app.
+// - Debounced search (no thrash on keystrokes)
+// - Keyboard & a11y for dropdown
+// - Mobile drawer menu
+// - Scoped styles via CSS module (plus optional Tailwind utilities)
+// - SSR safe (no window usage outside effects)
+// ─────────────────────────────────────────────────────────────────────────────
+
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button } from './ui/Button';
-import { Search, Settings, Home, ArrowLeft, Bell, Menu, X } from 'lucide-react';
+import styles from './Navigation.module.css';
+import { Button } from '../ui/Button';
+import { Search as SearchIcon, Settings, Home, ArrowLeft, Bell, Menu, X } from 'lucide-react';
+
+type SearchItem = {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+};
 
 interface NavigationProps {
   title?: string;
@@ -12,188 +31,320 @@ interface NavigationProps {
   showSearch?: boolean;
   showSettings?: boolean;
   showHome?: boolean;
+  // Optional: provide a search function to replace mock data
+  // Must return quickly (debounce already applied here)
+  onSearch?: (query: string) => Promise<SearchItem[]>;
 }
 
-export const Navigation = ({ 
-  title = "Trading Dashboard", 
+export function Navigation({
+  title = 'Trading Dashboard',
   showBack = false, 
   showSearch = true, 
   showSettings = true,
-  showHome = true 
-}: NavigationProps) => {
+  showHome = true,
+  onSearch,
+}: NavigationProps) {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // UI state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const handleBack = () => {
-    router.back();
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [results, setResults] = useState<SearchItem[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState<number>(-1);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Refs
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const debounceRef = useRef<number | null>(null);
+
+  // Mock fallback (kept sync/fast for dev)
+  const mockSearch = async (query: string): Promise<SearchItem[]> => {
+    const data: SearchItem[] = [
+      { symbol: 'AAPL',  name: 'Apple Inc.',         price: 150.25, change:  2.35, changePercent:  1.58 },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.',      price: 2750.00, change: -25.50, changePercent: -0.92 },
+      { symbol: 'TSLA',  name: 'Tesla Inc.',         price: 245.80, change:   8.20, changePercent:  3.45 },
+      { symbol: 'MSFT',  name: 'Microsoft Corp.',    price: 380.15, change:   5.25, changePercent:  1.40 },
+      { symbol: 'AMZN',  name: 'Amazon.com Inc.',    price: 3200.75, change: -15.25, changePercent: -0.47 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp.',       price: 905.60, change:  14.10, changePercent:  1.58 },
+      { symbol: 'META',  name: 'Meta Platforms Inc.',price: 498.50, change:  -3.25, changePercent: -0.65 },
+    ];
+    const q = query.toLowerCase();
+    return data.filter(d =>
+      d.symbol.toLowerCase().includes(q) || d.name.toLowerCase().includes(q)
+    );
   };
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (query.length > 2) {
-      // Mock search results - in real app, this would call an API
-      const mockResults = [
-        { symbol: 'AAPL', name: 'Apple Inc.', price: 150.25, change: 2.35, changePercent: 1.58 },
-        { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 2750.00, change: -25.50, changePercent: -0.92 },
-        { symbol: 'TSLA', name: 'Tesla Inc.', price: 245.80, change: 8.20, changePercent: 3.45 },
-        { symbol: 'MSFT', name: 'Microsoft Corp.', price: 380.15, change: 5.25, changePercent: 1.40 },
-        { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 3200.75, change: -15.25, changePercent: -0.47 },
-      ].filter(item => 
-        item.symbol.toLowerCase().includes(query.toLowerCase()) ||
-        item.name.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      setSearchResults(mockResults);
-      setShowSearchResults(true);
-    } else {
-      setShowSearchResults(false);
+  // Debounced search effect
+  useEffect(() => {
+    if (!showSearch) return;
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    if (!searchQuery || searchQuery.trim().length < 3) {
+      setResults([]);
+      setShowResults(false);
+      setHighlightIndex(-1);
+      return;
+    }
+
+    setIsSearching(true);
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const fn = onSearch ?? mockSearch;
+        const rows = await fn(searchQuery.trim());
+        setResults(rows);
+        setShowResults(rows.length > 0);
+        setHighlightIndex(rows.length ? 0 : -1);
+      } catch (err) {
+        console.error('[Navigation] search error:', err);
+        setResults([]);
+        setShowResults(false);
+        setHighlightIndex(-1);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250); // 250ms feels snappy
+
+    return () => {
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, [searchQuery, onSearch, showSearch]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showResults) return;
+
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        listRef.current &&
+        !listRef.current.contains(t) &&
+        inputRef.current &&
+        !inputRef.current.contains(t)
+      ) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [showResults]);
+
+  const handleBack = () => router.back();
+
+  const handleAssetSelect = (item: SearchItem) => {
+    setSearchQuery('');
+    setShowResults(false);
+    setHighlightIndex(-1);
+    // Example nav; replace with your detail route if needed
+    router.push(`/symbol/${item.symbol}`);
+  };
+
+  // Keyboard support for listbox
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showResults || !results.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex((h) => (h + 1) % results.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex((h) => (h - 1 + results.length) % results.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightIndex >= 0 && highlightIndex < results.length) {
+        handleAssetSelect(results[highlightIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowResults(false);
     }
   };
 
-  const handleAssetSelect = (asset: any) => {
-    setSearchQuery('');
-    setShowSearchResults(false);
-    // In a real app, this would navigate to the asset or add to watchlist
-    console.log('Selected asset:', asset);
-  };
+  const paperBadge = useMemo(
+    () => (
+      <div className={styles.modeBadge} aria-label="Paper trading mode">
+        <span className={styles.dot} />
+        <span className={styles.modeText}>Paper Trading</span>
+      </div>
+    ),
+    []
+  );
 
   return (
     <>
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Drawer Overlay */}
       {isMenuOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setIsMenuOpen(false)}>
-          <div className="fixed left-0 top-0 h-full w-64 bg-white shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold">Menu</h2>
-                <button onClick={() => setIsMenuOpen(false)}>
-                  <X className="w-6 h-6" />
+        <div
+          className={styles.drawerOverlay}
+          onClick={() => setIsMenuOpen(false)}
+          aria-hidden
+        >
+          <nav
+            className={styles.drawer}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Mobile navigation"
+          >
+            <div className={styles.drawerHeader}>
+              <h2 className={styles.drawerTitle}>Menu</h2>
+              <button
+                className={styles.iconBtn}
+                onClick={() => setIsMenuOpen(false)}
+                aria-label="Close menu"
+              >
+                <X className={styles.icon} />
                 </button>
               </div>
-              <nav className="space-y-2">
-                <Link href="/" className="flex items-center space-x-2 p-2 rounded hover:bg-gray-100">
-                  <Home className="w-5 h-5" />
+            <ul className={styles.drawerLinks}>
+              <li>
+                <Link href="/" className={styles.drawerLink}>
+                  <Home className={styles.icon} />
                   <span>Home</span>
                 </Link>
-                <Link href="/trading" className="flex items-center space-x-2 p-2 rounded hover:bg-gray-100">
-                  <span>📈</span>
+              </li>
+              <li>
+                <Link href="/trading" className={styles.drawerLink}>
+                  <span className={styles.emoji}>📈</span>
                   <span>Trading</span>
                 </Link>
-                <Link href="/settings" className="flex items-center space-x-2 p-2 rounded hover:bg-gray-100">
-                  <Settings className="w-5 h-5" />
+              </li>
+              <li>
+                <Link href="/settings" className={styles.drawerLink}>
+                  <Settings className={styles.icon} />
                   <span>Settings</span>
                 </Link>
+              </li>
+            </ul>
               </nav>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Navigation Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Left side */}
-            <div className="flex items-center space-x-4">
-              {/* Mobile menu button */}
+      {/* Header */}
+      <header className={styles.header} data-testid="navigation-header">
+        <div className={styles.container}>
+          <div className={styles.left}>
+            {/* Mobile Menu Button */}
               <button 
+              className={`${styles.iconBtn} ${styles.onlyMobile}`}
                 onClick={() => setIsMenuOpen(true)}
-                className="lg:hidden p-2 rounded-md hover:bg-gray-100"
+              aria-label="Open menu"
               >
-                <Menu className="w-6 h-6" />
+              <Menu className={styles.icon} />
               </button>
 
-              {/* Back button */}
+            {/* Back */}
               {showBack && (
                 <button 
+                className={styles.iconBtn}
                   onClick={handleBack}
-                  className="p-2 rounded-md hover:bg-gray-100"
+                aria-label="Go back"
                 >
-                  <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className={styles.icon} />
                 </button>
               )}
 
               {/* Title */}
-              <h1 className="text-xl lg:text-2xl font-bold text-gray-900">{title}</h1>
+            <h1 className={styles.title} aria-live="polite">
+              {title}
+            </h1>
 
-              {/* Trading mode indicator */}
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm text-gray-600">Paper Trading</span>
-              </div>
+            {/* Mode Badge */}
+            {paperBadge}
             </div>
 
-            {/* Center - Search */}
+          {/* Center: Search */}
             {showSearch && (
-              <div className="flex-1 max-w-lg mx-4 relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div className={styles.searchWrap}>
+              <div className={styles.searchBox} role="combobox" aria-expanded={showResults} aria-owns="nav-search-listbox">
+                <SearchIcon className={styles.searchIcon} aria-hidden />
                   <input
+                  ref={inputRef}
+                  className={styles.searchInput}
                     type="text"
-                    placeholder="Search assets (AAPL, GOOGL, etc.)"
+                  placeholder="Search assets (AAPL, NVDA, TSLA…) "
                     value={searchQuery}
-                    onChange={(e) => handleSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={onInputKeyDown}
+                  onFocus={() => results.length && setShowResults(true)}
+                  aria-autocomplete="list"
+                  aria-controls="nav-search-listbox"
+                  aria-activedescendant={
+                    highlightIndex >= 0 ? `nav-item-${highlightIndex}` : undefined
+                  }
+                />
+                {isSearching && <span className={styles.spinner} aria-hidden />}
                 </div>
 
-                {/* Search Results Dropdown */}
-                {showSearchResults && searchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                    {searchResults.map((asset, index) => (
+              {/* Results Dropdown */}
+              {showResults && results.length > 0 && (
+                <div
+                  ref={listRef}
+                  className={styles.dropdown}
+                  id="nav-search-listbox"
+                  role="listbox"
+                >
+                  {results.map((r, idx) => {
+                    const positive = r.change >= 0;
+                    return (
                       <button
-                        key={index}
-                        onClick={() => handleAssetSelect(asset)}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                        key={`${r.symbol}-${idx}`}
+                        id={`nav-item-${idx}`}
+                        role="option"
+                        aria-selected={highlightIndex === idx}
+                        className={`${styles.resultItem} ${
+                          highlightIndex === idx ? styles.resultItemActive : ''
+                        }`}
+                        onMouseEnter={() => setHighlightIndex(idx)}
+                        onClick={() => handleAssetSelect(r)}
                       >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium text-gray-900">{asset.symbol}</div>
-                            <div className="text-sm text-gray-600">{asset.name}</div>
+                        <div className={styles.resultLeft}>
+                          <div className={styles.resultSymbol}>{r.symbol}</div>
+                          <div className={styles.resultName}>{r.name}</div>
                           </div>
-                          <div className="text-right">
-                            <div className="font-medium text-gray-900">${asset.price.toFixed(2)}</div>
-                            <div className={`text-sm ${asset.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)} ({asset.changePercent >= 0 ? '+' : ''}{asset.changePercent.toFixed(2)}%)
-                            </div>
+                        <div className={styles.resultRight}>
+                          <div className={styles.resultPrice}>${r.price.toFixed(2)}</div>
+                          <div className={`${styles.resultChange} ${positive ? styles.up : styles.down}`}>
+                            {positive ? '+' : ''}
+                            {r.change.toFixed(2)} ({positive ? '+' : ''}
+                            {r.changePercent.toFixed(2)}%)
                           </div>
                         </div>
                       </button>
-                    ))}
+                    );
+                  })}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Right side */}
-            <div className="flex items-center space-x-4">
-              {/* Desktop Navigation */}
-              <div className="hidden lg:flex items-center space-x-2">
+          {/* Right: Actions */}
+          <div className={styles.right}>
+            <div className={styles.desktopLinks}>
                 {showHome && (
                   <Link href="/">
                     <Button variant="primary" size="sm">
-                      <Home className="w-4 h-4 mr-2" />
+                    <Home className={styles.iconSm} />
                       Home
                     </Button>
                   </Link>
                 )}
                 <Link href="/trading">
-                  <Button variant="secondary" size="sm">
-                    📈 Trading
-                  </Button>
+                <Button variant="secondary" size="sm">📈 Trading</Button>
                 </Link>
               </div>
 
               {/* Notifications */}
-              <div className="relative">
-                <button className="p-2 rounded-md hover:bg-gray-100 relative">
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    3
-                  </span>
+            <div className={styles.notifWrap}>
+              <button className={styles.iconBtn} aria-label="Open notifications">
+                <Bell className={styles.icon} />
+                <span className={styles.badge} aria-label="3 unread notifications">3</span>
                 </button>
               </div>
 
@@ -201,15 +352,16 @@ export const Navigation = ({
               {showSettings && (
                 <Link href="/settings">
                   <Button variant="secondary" size="sm">
-                    <Settings className="w-4 h-4 mr-2" />
+                  <Settings className={styles.iconSm} />
                     Settings
                   </Button>
                 </Link>
               )}
-            </div>
           </div>
         </div>
       </header>
     </>
   );
-};
+}
+
+export default Navigation;

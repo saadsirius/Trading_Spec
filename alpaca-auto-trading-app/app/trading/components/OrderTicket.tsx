@@ -85,7 +85,7 @@ export const OrderTicket = ({ symbol, currentPrice, mode, onOrderSubmit }: Order
         {/* Quick Actions */}
         <div className="flex space-x-2">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={handleQuickBuy}
             disabled={isLoading}
             className="flex-1 text-green-600 border-green-600 hover:bg-green-50"
@@ -93,7 +93,7 @@ export const OrderTicket = ({ symbol, currentPrice, mode, onOrderSubmit }: Order
             Quick Buy
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={handleQuickSell}
             disabled={isLoading}
             className="flex-1 text-red-600 border-red-600 hover:bg-red-50"

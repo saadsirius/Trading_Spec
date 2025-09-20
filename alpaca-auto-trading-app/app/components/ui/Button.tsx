@@ -1,64 +1,70 @@
-'use client';
+"use client";
 
+import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
-  loading?: boolean;
   children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+  loading?: boolean;
 }
 
-export const Button = ({
-  variant = 'primary',
-  size = 'md',
-  loading = false,
-  className,
-  children,
-  disabled,
-  onClick,
-  type,
-  ...props
-}: ButtonProps) => {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
-  
-  const variantClasses = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-    secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-    success: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
-    warning: 'bg-yellow-600 text-white hover:bg-yellow-700 focus:ring-yellow-500',
-  };
-  
-  const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
-  };
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ 
+    variant = 'primary', 
+    size = 'md', 
+    children, 
+    className, 
+    disabled = false,
+    loading = false,
+    ...props 
+  }, ref) => {
+    const baseClasses = "inline-flex items-center justify-center font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+    
+    const variants = {
+      primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+      secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      ghost: "hover:bg-accent hover:text-accent-foreground",
+      danger: "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+    };
+    
+    const sizes = {
+      sm: "h-9 px-3 text-sm",
+      md: "h-10 px-4 py-2",
+      lg: "h-11 px-8 text-lg"
+    };
 
-  return (
-    <motion.button
-      whileHover={{ scale: disabled ? 1 : 1.02 }}
-      whileTap={{ scale: disabled ? 1 : 0.98 }}
-      className={cn(
-        baseClasses,
-        variantClasses[variant],
-        sizeClasses[size],
-        className
-      )}
-      disabled={disabled || loading}
-      onClick={onClick}
-      type={type}
-    >
-      {loading && (
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2"
-        />
-      )}
-      {children}
-    </motion.button>
-  );
-};
+    return (
+      <motion.button
+        ref={ref}
+        className={cn(
+          baseClasses,
+          variants[variant],
+          sizes[size],
+          className
+        )}
+        disabled={disabled || loading}
+        whileHover={{ scale: disabled ? 1 : 1.02 }}
+        whileTap={{ scale: disabled ? 1 : 0.98 }}
+        {...props}
+      >
+        {loading && (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full"
+          />
+        )}
+        {children}
+      </motion.button>
+    );
+  }
+);
+
+Button.displayName = "Button";
+
+export { Button };

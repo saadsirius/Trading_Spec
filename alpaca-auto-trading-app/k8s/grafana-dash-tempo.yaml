@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dash-tempo
+  namespace: alpaca-iq
+data:
+  alpaca-iq-traces.json: |
+    {
+      "title": "Alpaca IQ - Traces & Latency",
+      "schemaVersion": 39,
+      "version": 1,
+      "panels": [
+        {
+          "type": "traces",
+          "title": "Recent Traces (errors first)",
+          "targets": [{ "datasource": { "type": "tempo" }, "query": "" }],
+          "options": { "search": { "query": "service.name = \"alpaca-iq\""}, "spanBar": { "type": "TraceToLogs" } }
+        },
+        {
+          "type": "stat",
+          "title": "Error Rate (5m)",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"alpaca-iq\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_spanmetrics_calls_total{service=\"alpaca-iq\"}[5m]))"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": {"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.05}]}}}
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency p50/p95/p99 (http.server)",
+          "fieldConfig": {"defaults": {"unit": "ms"}},
+          "targets": [
+            { "datasource": { "type": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\", service=\"alpaca-iq\"}[5m])) by (le))", "legendFormat": "p50" },
+            { "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\", service=\"alpaca-iq\"}[5m])) by (le))", "legendFormat": "p95" },
+            { "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\", service=\"alpaca-iq\"}[5m])) by (le))", "legendFormat": "p99" }
+          ]
+        },
+        {
+          "type": "bargauge",
+          "title": "Top Routes by Error %",
+          "targets": [
+            { "datasource": { "type": "prometheus" },
+              "expr": "topk(10, sum(rate(traces_spanmetrics_calls_total{service=\"alpaca-iq\", status_code=\"STATUS_CODE_ERROR\"}[5m])) by (http_target) / sum(rate(traces_spanmetrics_calls_total{service=\"alpaca-iq\"}[5m])) by (http_target))"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "percentunit" } }
+        }
+      ]
+    }

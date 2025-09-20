@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: alpaca-iq
+  labels: { app: tempo }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tempo }
+  template:
+    metadata: { labels: { app: tempo } }
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.5.0
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - containerPort: 3200  # http query
+            - containerPort: 4318  # otlp http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: alpaca-iq
+spec:
+  selector: { app: tempo }
+  ports:
+    - name: http
+      port: 3200
+      targetPort: 3200
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: alpaca-iq
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            http:
+    storage:
+      trace:
+        backend: local
+        wal:
+          path: /tmp/tempo/wal
+        local:
+          path: /tmp/tempo/blocks
+    overrides:
+      metrics_generator_processors:
+        - service-graphs
+        - span-metrics

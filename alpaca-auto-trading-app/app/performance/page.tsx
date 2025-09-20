@@ -1,185 +1,215 @@
-'use client';
+"use client";
 
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
-import { useEffect, useRef } from 'react';
-import clsx from 'clsx';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type {
+  IChartApi,
+  ISeriesApi,
+  Time,
+  LineData,
+  HistogramData,
+  AreaData,
+} from "lightweight-charts";
+import clsx from "clsx";
 
-interface PerformanceMetrics {
+type PerformanceMetrics = {
   totalReturn: number;
   annualizedReturn: number;
   sharpeRatio: number;
-  maxDrawdown: number;
-  winRate: number;
+  maxDrawdown: number; // negative %
+  winRate: number;     // %
   profitFactor: number;
-  volatility: number;
+  volatility: number;  // %
   calmarRatio: number;
-}
+};
 
-interface PerformanceData {
-  date: string;
+type PerformanceData = {
+  date: string;   // "YYYY-MM-DD" or ISO date
   equity: number;
-  returns: number;
-  drawdown: number;
+  returns: number;   // e.g. daily pct or absolute
+  drawdown: number;  // negative values down to 0
   benchmark?: number;
-}
+};
 
 export default function Performance() {
-  const [timeframe, setTimeframe] = useState<'1M' | '3M' | '6M' | '1Y' | 'ALL'>('1Y');
-  const [chartType, setChartType] = useState<'equity' | 'returns' | 'drawdown'>('equity');
-  
-  const equityChartRef = useRef<HTMLDivElement>(null);
-  const returnsChartRef = useRef<HTMLDivElement>(null);
-  const drawdownChartRef = useRef<HTMLDivElement>(null);
-  
-  const [equityChart, setEquityChart] = useState<IChartApi | null>(null);
-  const [returnsChart, setReturnsChart] = useState<IChartApi | null>(null);
-  const [drawdownChart, setDrawdownChart] = useState<IChartApi | null>(null);
+  const [timeframe, setTimeframe] = useState<"1M" | "3M" | "6M" | "1Y" | "ALL">("1Y");
 
+  // containers
+  const equityEl = useRef<HTMLDivElement | null>(null);
+  const returnsEl = useRef<HTMLDivElement | null>(null);
+  const ddEl = useRef<HTMLDivElement | null>(null);
+
+  // charts + series (kept stable)
+  const chartRefEq = useRef<IChartApi | null>(null);
+  const chartRefRet = useRef<IChartApi | null>(null);
+  const chartRefDD = useRef<IChartApi | null>(null);
+
+  const seriesRefEq = useRef<ISeriesApi<"Line"> | null>(null);
+  const seriesRefRet = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const seriesRefDD = useRef<ISeriesApi<"Area"> | null>(null);
+
+  const roRef = useRef<ResizeObserver | null>(null);
+
+  // Fetch data
   const { data: performanceData, isLoading } = useQuery({
-    queryKey: ['performance', timeframe],
+    queryKey: ["performance", timeframe],
     queryFn: async (): Promise<PerformanceData[]> => {
       const res = await fetch(`/api/performance?timeframe=${timeframe}`);
-      if (!res.ok) throw new Error('Failed to fetch performance data');
+      if (!res.ok) throw new Error("Failed to fetch performance data");
       return res.json();
-    }
+    },
   });
 
   const { data: metrics } = useQuery({
-    queryKey: ['performance-metrics', timeframe],
+    queryKey: ["performance-metrics", timeframe],
     queryFn: async (): Promise<PerformanceMetrics> => {
       const res = await fetch(`/api/performance/metrics?timeframe=${timeframe}`);
-      if (!res.ok) throw new Error('Failed to fetch performance metrics');
+      if (!res.ok) throw new Error("Failed to fetch performance metrics");
       return res.json();
-    }
+    },
   });
 
-  // Initialize charts
+  // Map once (cheap) & stable
+  const mapped = useMemo(() => {
+    const eq: LineData[] = [];
+    const rets: HistogramData[] = [];
+    const dd: AreaData[] = [];
+    if (!performanceData?.length) return { eq, rets, dd };
+
+    for (const d of performanceData) {
+      const t = (d.date as unknown) as Time; // string dates are supported
+      eq.push({ time: t, value: d.equity });
+      rets.push({ time: t, value: d.returns, color: d.returns >= 0 ? "#26a69a" : "#ef5350" });
+      dd.push({ time: t, value: d.drawdown });
+    }
+    return { eq, rets, dd };
+  }, [performanceData]);
+
+  // Init charts once (client-side)
   useEffect(() => {
-    if (!equityChartRef.current || equityChart) return;
+    let disposed = false;
 
-    const newEquityChart = createChart(equityChartRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#1a1a1a' },
-        textColor: '#d1d4dc',
-      },
-      width: equityChartRef.current.clientWidth,
-      height: 300,
-      grid: {
-        vertLines: { color: '#2B2B43' },
-        horzLines: { color: '#2B2B43' },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: '#485c7b',
-      },
-      timeScale: {
-        borderColor: '#485c7b',
-      },
-    });
+    async function init() {
+      const elsReady = equityEl.current && returnsEl.current && ddEl.current;
+      if (!elsReady) return;
 
-    const newReturnsChart = createChart(returnsChartRef.current!, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#1a1a1a' },
-        textColor: '#d1d4dc',
-      },
-      width: returnsChartRef.current!.clientWidth,
-      height: 200,
-      grid: {
-        vertLines: { color: '#2B2B43' },
-        horzLines: { color: '#2B2B43' },
-      },
-      rightPriceScale: {
-        borderColor: '#485c7b',
-      },
-      timeScale: {
-        borderColor: '#485c7b',
-      },
-    });
+      // dynamic import keeps initial bundle light and avoids SSR surprises
+      const { createChart } = await import("lightweight-charts");
+      if (disposed) return;
 
-    const newDrawdownChart = createChart(drawdownChartRef.current!, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#1a1a1a' },
-        textColor: '#d1d4dc',
-      },
-      width: drawdownChartRef.current!.clientWidth,
-      height: 200,
-      grid: {
-        vertLines: { color: '#2B2B43' },
-        horzLines: { color: '#2B2B43' },
-      },
-      rightPriceScale: {
-        borderColor: '#485c7b',
-      },
-      timeScale: {
-        borderColor: '#485c7b',
-      },
-    });
+      // Shared opts
+      const base = {
+        layout: { background: { color: "#1a1a1a" }, textColor: "#d1d4dc" },
+        grid: {
+          vertLines: { color: "#2B2B43" },
+          horzLines: { color: "#2B2B43" },
+        },
+        crosshair: { mode: 1 as const },
+        rightPriceScale: { borderColor: "#485c7b" },
+        timeScale: { borderColor: "#485c7b" },
+      };
 
-    setEquityChart(newEquityChart);
-    setReturnsChart(newReturnsChart);
-    setDrawdownChart(newDrawdownChart);
+      // Create charts
+      const eq = createChart(equityEl.current!, {
+        ...base,
+        width: equityEl.current!.clientWidth,
+        height: 320,
+      });
+      const rt = createChart(returnsEl.current!, {
+        ...base,
+        width: returnsEl.current!.clientWidth,
+        height: 220,
+      });
+      const dd = createChart(ddEl.current!, {
+        ...base,
+        width: ddEl.current!.clientWidth,
+        height: 220,
+      });
+
+      chartRefEq.current = eq;
+      chartRefRet.current = rt;
+      chartRefDD.current = dd;
+
+      // Add series (once)
+      seriesRefEq.current = eq.addLineSeries({ color: "#2962FF", lineWidth: 2 });
+      seriesRefRet.current = rt.addHistogramSeries({
+        color: "#26a69a",
+        priceFormat: { type: "price", precision: 4, minMove: 0.0001 },
+      });
+      seriesRefDD.current = dd.addAreaSeries({
+        topColor: "rgba(239,83,80,0.30)",
+        bottomColor: "rgba(239,83,80,0.00)",
+        lineColor: "#ef5350",
+        lineWidth: 2,
+      });
+
+      // First data render
+      if (mapped.eq.length) {
+        seriesRefEq.current.setData(mapped.eq);
+        eq.timeScale().fitContent();
+      }
+      if (mapped.rets.length) {
+        seriesRefRet.current.setData(mapped.rets);
+        rt.timeScale().fitContent();
+      }
+      if (mapped.dd.length) {
+        seriesRefDD.current.setData(mapped.dd);
+        dd.timeScale().fitContent();
+      }
+
+      // ResizeObserver (one observer for three charts)
+      const ro = new ResizeObserver(() => {
+        if (!equityEl.current || !returnsEl.current || !ddEl.current) return;
+        eq.applyOptions({ width: equityEl.current.clientWidth });
+        rt.applyOptions({ width: returnsEl.current.clientWidth });
+        dd.applyOptions({ width: ddEl.current.clientWidth });
+      });
+      ro.observe(equityEl.current!);
+      ro.observe(returnsEl.current!);
+      ro.observe(ddEl.current!);
+      roRef.current = ro;
+    }
+
+    init();
 
     return () => {
-      newEquityChart.remove();
-      newReturnsChart.remove();
-      newDrawdownChart.remove();
+      disposed = true;
+      if (roRef.current) {
+        try { roRef.current.disconnect(); } catch {}
+        roRef.current = null;
+      }
+      if (chartRefEq.current) { try { chartRefEq.current.remove(); } catch {}; chartRefEq.current = null; }
+      if (chartRefRet.current) { try { chartRefRet.current.remove(); } catch {}; chartRefRet.current = null; }
+      if (chartRefDD.current) { try { chartRefDD.current.remove(); } catch {}; chartRefDD.current = null; }
+      seriesRefEq.current = null;
+      seriesRefRet.current = null;
+      seriesRefDD.current = null;
     };
-  }, [equityChart, returnsChart, drawdownChart]);
+  // initialize only once; mapped lengths don't recreate charts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Update chart data
+  // Update series data when API changes (no re-create)
   useEffect(() => {
-    if (!performanceData || !equityChart || !returnsChart || !drawdownChart) return;
+    if (seriesRefEq.current && mapped.eq.length) {
+      seriesRefEq.current.setData(mapped.eq);
+      chartRefEq.current?.timeScale().fitContent();
+    }
+    if (seriesRefRet.current && mapped.rets.length) {
+      seriesRefRet.current.setData(mapped.rets);
+      chartRefRet.current?.timeScale().fitContent();
+    }
+    if (seriesRefDD.current && mapped.dd.length) {
+      seriesRefDD.current.setData(mapped.dd);
+      chartRefDD.current?.timeScale().fitContent();
+    }
+  }, [mapped.eq, mapped.rets, mapped.dd]);
 
-    // Clear existing series
-    equityChart.removeSeries(equityChart.series());
-    returnsChart.removeSeries(returnsChart.series());
-    drawdownChart.removeSeries(drawdownChart.series());
-
-    // Equity curve
-    const equitySeries = equityChart.addLineSeries({
-      color: '#2962FF',
-      lineWidth: 2,
-    });
-    equitySeries.setData(performanceData.map(d => ({
-      time: d.date,
-      value: d.equity,
-    })));
-
-    // Returns
-    const returnsSeries = returnsChart.addHistogramSeries({
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
-    });
-    returnsSeries.setData(performanceData.map(d => ({
-      time: d.date,
-      value: d.returns,
-      color: d.returns >= 0 ? '#26a69a' : '#ef5350',
-    })));
-
-    // Drawdown
-    const drawdownSeries = drawdownChart.addAreaSeries({
-      topColor: 'rgba(239, 83, 80, 0.3)',
-      bottomColor: 'rgba(239, 83, 80, 0.0)',
-      lineColor: '#ef5350',
-      lineWidth: 2,
-    });
-    drawdownSeries.setData(performanceData.map(d => ({
-      time: d.date,
-      value: d.drawdown,
-    })));
-
-  }, [performanceData, equityChart, returnsChart, drawdownChart]);
-
-  const getMetricColor = (value: number, type: 'positive' | 'negative' | 'neutral' = 'neutral') => {
-    if (type === 'positive') return value >= 0 ? 'text-green-400' : 'text-red-400';
-    if (type === 'negative') return value <= 0 ? 'text-green-400' : 'text-red-400';
-    return value >= 0 ? 'text-green-400' : 'text-red-400';
+  // UI helpers
+  const getMetricColor = (value: number, type: "positive" | "negative" | "neutral" = "neutral") => {
+    if (type === "positive") return value >= 0 ? "text-green-400" : "text-red-400";
+    if (type === "negative") return value <= 0 ? "text-green-400" : "text-red-400";
+    return value >= 0 ? "text-green-400" : "text-red-400";
   };
 
   return (
@@ -187,15 +217,13 @@ export default function Performance() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Performance Analytics</h1>
         <div className="flex space-x-2">
-          {(['1M', '3M', '6M', '1Y', 'ALL'] as const).map((period) => (
+          {(["1M", "3M", "6M", "1Y", "ALL"] as const).map((period) => (
             <button
               key={period}
               onClick={() => setTimeframe(period)}
               className={clsx(
-                'px-3 py-1 rounded-md text-sm font-medium transition-colors',
-                timeframe === period
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                "px-3 py-1 rounded-md text-sm font-medium transition-colors",
+                timeframe === period ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               )}
             >
               {period}
@@ -204,94 +232,36 @@ export default function Performance() {
         </div>
       </div>
 
-      {/* Performance Metrics */}
+      {/* Metrics */}
       {metrics && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Total Return</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.totalReturn))}>
-              {metrics.totalReturn.toFixed(2)}%
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Annualized</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.annualizedReturn))}>
-              {metrics.annualizedReturn.toFixed(2)}%
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Sharpe Ratio</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.sharpeRatio))}>
-              {metrics.sharpeRatio.toFixed(2)}
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Max Drawdown</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.maxDrawdown, 'negative'))}>
-              {metrics.maxDrawdown.toFixed(2)}%
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Win Rate</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.winRate - 50))}>
-              {metrics.winRate.toFixed(1)}%
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Profit Factor</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.profitFactor - 1))}>
-              {metrics.profitFactor.toFixed(2)}
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Volatility</div>
-            <div className="text-xl font-bold text-yellow-400">
-              {metrics.volatility.toFixed(2)}%
-            </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-sm text-gray-400">Calmar Ratio</div>
-            <div className={clsx('text-xl font-bold', getMetricColor(metrics.calmarRatio))}>
-              {metrics.calmarRatio.toFixed(2)}
-            </div>
-          </div>
+          <Metric label="Total Return" value={`${metrics.totalReturn.toFixed(2)}%`} cls={getMetricColor(metrics.totalReturn)} />
+          <Metric label="Annualized" value={`${metrics.annualizedReturn.toFixed(2)}%`} cls={getMetricColor(metrics.annualizedReturn)} />
+          <Metric label="Sharpe Ratio" value={metrics.sharpeRatio.toFixed(2)} cls={getMetricColor(metrics.sharpeRatio)} />
+          <Metric label="Max Drawdown" value={`${metrics.maxDrawdown.toFixed(2)}%`} cls={getMetricColor(metrics.maxDrawdown, "negative")} />
+          <Metric label="Win Rate" value={`${metrics.winRate.toFixed(1)}%`} cls={getMetricColor(metrics.winRate - 50)} />
+          <Metric label="Profit Factor" value={metrics.profitFactor.toFixed(2)} cls={getMetricColor(metrics.profitFactor - 1)} />
+          <Metric label="Volatility" value={`${metrics.volatility.toFixed(2)}%`} cls="text-yellow-400" />
+          <Metric label="Calmar Ratio" value={metrics.calmarRatio.toFixed(2)} cls={getMetricColor(metrics.calmarRatio)} />
         </div>
       )}
 
       {/* Charts */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Equity Curve */}
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Equity Curve</h2>
-          {isLoading ? (
-            <div className="text-gray-400">Loading chart...</div>
-          ) : (
-            <div ref={equityChartRef} className="w-full h-80" />
-          )}
-        </div>
+      <section className="grid grid-cols-1 gap-6">
+        <Panel title="Equity Curve">
+          {isLoading ? <Loader /> : <div ref={equityEl} className="w-full h-80" data-testid="equity-chart" />}
+        </Panel>
 
-        {/* Returns Distribution */}
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Daily Returns</h2>
-          {isLoading ? (
-            <div className="text-gray-400">Loading chart...</div>
-          ) : (
-            <div ref={returnsChartRef} className="w-full h-60" />
-          )}
-        </div>
+        <Panel title="Daily Returns">
+          {isLoading ? <Loader /> : <div ref={returnsEl} className="w-full h-60" data-testid="returns-chart" />}
+        </Panel>
 
-        {/* Drawdown Chart */}
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Drawdown</h2>
-          {isLoading ? (
-            <div className="text-gray-400">Loading chart...</div>
-          ) : (
-            <div ref={drawdownChartRef} className="w-full h-60" />
-          )}
-        </div>
-      </div>
+        <Panel title="Drawdown">
+          {isLoading ? <Loader /> : <div ref={ddEl} className="w-full h-60" data-testid="drawdown-chart" />}
+        </Panel>
+      </section>
 
-      {/* Performance Summary */}
+      {/* Summary */}
       {metrics && (
         <div className="bg-gray-800 p-6 rounded-lg">
           <h2 className="text-xl font-semibold mb-4">Performance Summary</h2>
@@ -300,22 +270,13 @@ export default function Performance() {
               <h3 className="text-lg font-medium mb-3 text-green-400">Strengths</h3>
               <ul className="space-y-2 text-sm">
                 {metrics.sharpeRatio > 1 && (
-                  <li className="flex justify-between">
-                    <span>Strong risk-adjusted returns</span>
-                    <span className="text-green-400">Sharpe: {metrics.sharpeRatio.toFixed(2)}</span>
-                  </li>
+                  <Row left="Strong risk-adjusted returns" right={`Sharpe: ${metrics.sharpeRatio.toFixed(2)}`} rightCls="text-green-400" />
                 )}
                 {metrics.winRate > 60 && (
-                  <li className="flex justify-between">
-                    <span>High win rate</span>
-                    <span className="text-green-400">{metrics.winRate.toFixed(1)}%</span>
-                  </li>
+                  <Row left="High win rate" right={`${metrics.winRate.toFixed(1)}%`} rightCls="text-green-400" />
                 )}
                 {metrics.profitFactor > 1.5 && (
-                  <li className="flex justify-between">
-                    <span>Good profit factor</span>
-                    <span className="text-green-400">{metrics.profitFactor.toFixed(2)}</span>
-                  </li>
+                  <Row left="Good profit factor" right={metrics.profitFactor.toFixed(2)} rightCls="text-green-400" />
                 )}
               </ul>
             </div>
@@ -323,22 +284,13 @@ export default function Performance() {
               <h3 className="text-lg font-medium mb-3 text-red-400">Areas for Improvement</h3>
               <ul className="space-y-2 text-sm">
                 {metrics.maxDrawdown < -10 && (
-                  <li className="flex justify-between">
-                    <span>High maximum drawdown</span>
-                    <span className="text-red-400">{metrics.maxDrawdown.toFixed(2)}%</span>
-                  </li>
+                  <Row left="High maximum drawdown" right={`${metrics.maxDrawdown.toFixed(2)}%`} rightCls="text-red-400" />
                 )}
                 {metrics.volatility > 20 && (
-                  <li className="flex justify-between">
-                    <span>High volatility</span>
-                    <span className="text-yellow-400">{metrics.volatility.toFixed(2)}%</span>
-                  </li>
+                  <Row left="High volatility" right={`${metrics.volatility.toFixed(2)}%`} rightCls="text-yellow-400" />
                 )}
                 {metrics.sharpeRatio < 0.5 && (
-                  <li className="flex justify-between">
-                    <span>Low risk-adjusted returns</span>
-                    <span className="text-red-400">Sharpe: {metrics.sharpeRatio.toFixed(2)}</span>
-                  </li>
+                  <Row left="Low risk-adjusted returns" right={`Sharpe: ${metrics.sharpeRatio.toFixed(2)}`} rightCls="text-red-400" />
                 )}
               </ul>
             </div>
@@ -347,4 +299,37 @@ export default function Performance() {
       )}
     </div>
   );
+}
+
+/* ————— Little UI bits ————— */
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-gray-800 p-6 rounded-lg">
+      <h2 className="text-xl font-semibold mb-4">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Metric({ label, value, cls }: { label: string; value: string | number; cls?: string }) {
+  return (
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <div className="text-sm text-gray-400">{label}</div>
+      <div className={clsx("text-xl font-bold", cls)}>{value}</div>
+    </div>
+  );
+}
+
+function Row({ left, right, rightCls }: { left: string; right: string; rightCls?: string }) {
+  return (
+    <li className="flex justify-between">
+      <span>{left}</span>
+      <span className={rightCls}>{right}</span>
+    </li>
+  );
+}
+
+function Loader() {
+  return <div className="text-gray-400">Loading chart...</div>;
 }

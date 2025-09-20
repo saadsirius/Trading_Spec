@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: alpaca-iq
+data:
+  request-latency.json: |
+    {
+      "title": "Alpaca IQ - HTTP Latency",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "HTTP Server Duration p95",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_bucket{service=\"alpaca-iq\"}[5m])) by (le))"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        }
+      ],
+      "schemaVersion": 39,
+      "version": 1
+    }

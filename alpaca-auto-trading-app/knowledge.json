@@ -1,0 +1,22 @@
+{
+    "schemaVersion": "1.0.0",
+    "chunks": [
+        {
+            "id": "chunk_0",
+            "content": "Alpaca Trading App Architecture",
+            "metadata": {
+                "type": "architecture",
+                "section": "overview"
+            }
+        },
+        {
+            "id": "chunk_1",
+            "content": "Technical indicators implementation",
+            "metadata": {
+                "type": "technical",
+                "section": "indicators"
+            }
+        }
+    ]
+}
+

@@ -51,6 +51,7 @@ from app.models.schemas import (
 
 from app.services.alpaca_simple import AlpacaService
 from app.core.secure_config import get_secure_config
+from app.api.routes.trades import router as trades_router
 
 # Configure logging
 logger = logging.getLogger(__name__)
