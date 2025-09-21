@@ -3,7 +3,11 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Alpaca IQ',
-  description: 'Professional Trading Application',
+  description: 'TradingView-like + Alpaca execution',
+  icons: {
+    icon: '/icon.png',           // resolves to app/icon.png
+    apple: '/apple-icon.png',
+  },
 }
 
 export default function RootLayout({
