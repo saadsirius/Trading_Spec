@@ -12,11 +12,7 @@ data:
         access: proxy
         url: http://tempo.alpaca-iq.svc.cluster.local:3200
         isDefault: true
-  dashboards.yaml: |
-    apiVersion: 1
-    providers:
-      - name: 'Alpaca IQ'
-        folder: 'Alpaca IQ'
-        type: file
-        options:
-          path: /var/lib/grafana/dashboards
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.alpaca-iq.svc.cluster.local:3100

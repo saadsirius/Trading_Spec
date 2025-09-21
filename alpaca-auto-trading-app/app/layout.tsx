@@ -1,33 +1,28 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-import AnimatedNavbar from '@/components/AnimatedNavbar';
-import CommandPalette from '@/components/CommandPalette';
-import { ToastViewport } from '@/lib/toast/ToastService';
-import Providers from './providers';
-
-const inter = Inter({ subsets: ['latin'] });
+import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Alpaca IQ',
-  description: 'TradingView-like + Alpaca execution',
-};
+  description: 'Professional Trading Application',
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
-    <html lang="fr" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100`}>
-        <Providers>
-          <AnimatedNavbar />
-          <CommandPalette />
-          <main className="min-h-[calc(100vh-56px)]">{children}</main>
-          <ToastViewport />
-        </Providers>
+    <html lang="en">
+      <body>
+        <div className="min-h-screen bg-gray-900 text-white">
+          <nav className="bg-gray-800 p-4">
+            <h1 className="text-xl font-bold">Alpaca IQ Trading</h1>
+          </nav>
+          <main className="container mx-auto p-4">
+            {children}
+          </main>
+        </div>
       </body>
     </html>
-  );
+  )
 }
